@@ -46,7 +46,12 @@ export default function OnboardingPage() {
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
-        if (user?.username && user?.favoriteTcgs?.length > 0 && user?.primaryGoal) {
+        if (
+            user?.username &&
+            user?.favoriteTcgs?.length > 0 &&
+            user?.primaryGoal &&
+            user?.onboardingComplete
+        ) {
             router.push("/portfolio");
         }
     }, [user, router]);
