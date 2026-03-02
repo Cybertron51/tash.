@@ -2,6 +2,8 @@
 -- LEDGER — Seed Dummy Data
 -- ============================================================
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
 INSERT INTO cards (symbol, name, category, set_name, year, psa_grade, image_url) VALUES 
 ('CHZ10-BASE-1999', 'Charizard Holo', 'pokemon', 'Base Set 1999', 1999, 10, '/cards/CHZ10-BASE-1999.svg'),
 ('PIKA10-ILLUS-1998', 'Pikachu Illustrator', 'pokemon', 'Promo 1998', 1998, 10, ''),
@@ -69,7 +71,7 @@ BEGIN
     'authenticated',
     'authenticated',
     'demo@tash.com',
-    crypt('demo123', gen_salt('bf')),
+    extensions.crypt('demo123', extensions.gen_salt('bf')),
     NOW(),
     '{"provider":"email","providers":["email"]}',
     '{"name":"Demo User"}',
@@ -93,7 +95,7 @@ BEGIN
     'authenticated',
     'authenticated',
     'alice@tash.com',
-    crypt('alice123', gen_salt('bf')),
+    extensions.crypt('alice123', extensions.gen_salt('bf')),
     NOW(),
     '{"provider":"email","providers":["email"]}',
     '{"name":"Alice Collector"}',
@@ -117,7 +119,7 @@ BEGIN
     'authenticated',
     'authenticated',
     'bob@tash.com',
-    crypt('bob123', gen_salt('bf')),
+    extensions.crypt('bob123', extensions.gen_salt('bf')),
     NOW(),
     '{"provider":"email","providers":["email"]}',
     '{"name":"Bob Trader"}',
