@@ -1,22 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 
-const CARDS = [
-    "/cards/BLS10-BASE-1999.svg",
-    "/cards/CHZ10-BASE-1999.svg",
-    "/cards/LBJ10-TOP-2003.svg",
-    "/cards/PIKA10-ILLUS-1998.svg",
-    "/cards/PMH10-OPTIC-2017.svg",
-    "/cards/RAY10-DS-2005.svg",
-    "/cards/UMB10-POP-2005.svg"
-];
+const CARDS = Array.from({ length: 32 }, (_, i) => `/cards/card${i + 1}.jpg`);
 const TOTAL_CARDS = CARDS.length;
 const COLS = 5;
 const CELL_COUNT = 60;
