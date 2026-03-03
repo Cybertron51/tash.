@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Shield, LogOut, ChevronRight, Bell, CreditCard } from "lucide-react";
+import { User, Mail, Shield, LogOut, ChevronRight, Bell, CreditCard, Wallet, Key } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
@@ -53,16 +53,16 @@ export default function AccountPage() {
           href: "/deposit",
         },
         {
-          icon: <Bell size={15} />,
-          label: "Notifications",
-          sub: "Price alerts and order updates",
-          href: "#",
+          icon: <Wallet size={15} />,
+          label: "Withdraw Funds",
+          sub: "Transfer money to your bank",
+          href: "/withdraw",
         },
         {
-          icon: <Shield size={15} />,
-          label: "Security",
-          sub: "Two-factor authentication",
-          href: "#",
+          icon: <Key size={15} />,
+          label: "Change Password",
+          sub: "Update your account password",
+          href: "/change-password",
         },
       ],
     },
