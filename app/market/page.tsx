@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  *   and the equivalent top-right corner in simple mode.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2 } from "lucide-react";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { SimpleView } from "@/components/market/SimpleView";
@@ -72,7 +73,8 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
 // Page
 // ─────────────────────────────────────────────────────────
 
-export default function MarketPage() {
+function MarketPageContent() {
+  const searchParams = useSearchParams();
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
@@ -118,14 +120,16 @@ export default function MarketPage() {
           return asset;
         });
         setAssets(newAssets);
-        setSelectedSymbol((prev) =>
-          newAssets.some(a => a.symbol === prev) ? prev : newAssets[0].symbol
-        );
+        const urlSymbol = searchParams?.get("symbol");
+        setSelectedSymbol((prev) => {
+          if (urlSymbol && newAssets.some(a => a.symbol === urlSymbol)) return urlSymbol;
+          return newAssets.some(a => a.symbol === prev) ? prev : newAssets[0].symbol;
+        });
       }
       setIsLoading(false);
     }
     fetchAssets();
-  }, []);
+  }, [searchParams]);
 
   // ── Live price ticks via Realtime ───────────────────────────
   useEffect(() => {
@@ -574,5 +578,13 @@ export default function MarketPage() {
 
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </div>
+  );
+}
+
+export default function MarketPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><p>Loading...</p></div>}>
+      <MarketPageContent />
+    </Suspense>
   );
 }
