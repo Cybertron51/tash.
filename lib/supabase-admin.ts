@@ -20,7 +20,7 @@ export const supabaseAdmin: SupabaseClient | null =
  */
 export async function verifyAuth(
     req: NextRequest
-): Promise<{ userId: string; email: string } | null> {
+): Promise<{ userId: string; email: string; emailConfirmed: boolean } | null> {
     if (!supabaseAdmin) return null;
 
     const authHeader = req.headers.get("authorization");
@@ -35,7 +35,7 @@ export async function verifyAuth(
 
     if (error || !user) return null;
 
-    return { userId: user.id, email: user.email ?? "" };
+    return { userId: user.id, email: user.email ?? "", emailConfirmed: !!user.email_confirmed_at };
 }
 
 /**

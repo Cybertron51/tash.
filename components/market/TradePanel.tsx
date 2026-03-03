@@ -8,10 +8,11 @@ import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { api } from "@/lib/api";
-import type { AssetData } from "@/lib/market-data";
+import type { AssetData, OrderBook as OrderBookData } from "@/lib/market-data";
 
 interface TradePanelProps {
   asset: AssetData;
+  orderBook?: OrderBookData | null;
   onRequestSignIn?: () => void;
 }
 
@@ -26,7 +27,7 @@ interface OrderResult {
   message?: string;
 }
 
-export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
+export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProps) {
   const { user, isAuthenticated, updateBalance } = useAuth();
   const { addHolding } = usePortfolio();
 
@@ -58,6 +59,58 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
   const accentMuted = isBuy ? colors.greenMuted : colors.redMuted;
 
   const canAfford = !isAuthenticated || (user?.cashBalance ?? 0) >= total;
+
+  // Fill likelihood
+  let fillLikelihood = null;
+  let likelihoodColor: string = colors.textMuted;
+  let likelihoodText = "";
+  let likelihoodPct = 0;
+
+  if (orderType === "limit" && orderBook) {
+    const bestOpposingPrice = isBuy
+      ? orderBook.asks.length > 0 ? orderBook.asks[0].price : null
+      : orderBook.bids.length > 0 ? orderBook.bids[0].price : null;
+
+    if (bestOpposingPrice) {
+      if (isBuy) {
+        if (estPrice >= bestOpposingPrice) fillLikelihood = "Immediate";
+        else {
+          const diffPct = (bestOpposingPrice - estPrice) / bestOpposingPrice;
+          if (diffPct < 0.05) fillLikelihood = "High";
+          else if (diffPct <= 0.15) fillLikelihood = "Medium";
+          else fillLikelihood = "Low";
+        }
+      } else {
+        if (estPrice <= bestOpposingPrice) fillLikelihood = "Immediate";
+        else {
+          const diffPct = (estPrice - bestOpposingPrice) / bestOpposingPrice;
+          if (diffPct < 0.05) fillLikelihood = "High";
+          else if (diffPct <= 0.15) fillLikelihood = "Medium";
+          else fillLikelihood = "Low";
+        }
+      }
+    } else {
+      fillLikelihood = "Low"; // No opposing orders
+    }
+
+    if (fillLikelihood === "Immediate") {
+      likelihoodColor = colors.green;
+      likelihoodText = "Immediate Fill";
+      likelihoodPct = 100;
+    } else if (fillLikelihood === "High") {
+      likelihoodColor = colors.green;
+      likelihoodText = "High Likelihood";
+      likelihoodPct = 85;
+    } else if (fillLikelihood === "Medium") {
+      likelihoodColor = colors.gold;
+      likelihoodText = "Medium Likelihood";
+      likelihoodPct = 50;
+    } else {
+      likelihoodColor = colors.red;
+      likelihoodText = "Low Likelihood";
+      likelihoodPct = 15;
+    }
+  }
 
   function handleReview() {
     if (!isAuthenticated) {
@@ -337,6 +390,16 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
               outline: "none",
             }}
           />
+
+          <div className="mt-2 rounded-[8px] px-3 py-2" style={{ background: colors.surfaceRaised, border: `1px solid ${colors.borderSubtle}` }}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Fill Likelihood</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: likelihoodColor }}>{likelihoodText || "N/A"}</span>
+            </div>
+            <div className="w-full h-1.5 rounded-full" style={{ background: colors.border }}>
+              <div className="h-full rounded-full transition-all duration-300 ease-out" style={{ width: `${likelihoodPct}%`, background: likelihoodColor }} />
+            </div>
+          </div>
         </div>
       )}
 

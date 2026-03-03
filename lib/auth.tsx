@@ -19,7 +19,7 @@ export interface User {
   name: string;
   username: string | null;
   favoriteTcgs: string[];
-  primaryGoal: string | null;
+  primaryGoal: string[];
   email: string;
   initials: string;
   cashBalance: number;
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: data.name || "User",
         username: data.username,
         favoriteTcgs: data.favorite_tcgs || [],
-        primaryGoal: data.primary_goal,
+        primaryGoal: data.primary_goal || [],
         email: email,
         initials: (data.name || "U")[0].toUpperCase(),
         cashBalance: Number(data.cash_balance),

@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
       console.error("Auth Error details:", authError);
       return NextResponse.json({ error: "Unauthorized or invalid token", details: authError }, { status: 401 });
     }
+
+    if (!authData.user.email_confirmed_at) {
+      return NextResponse.json({ error: "Please confirm your email before trading." }, { status: 403 });
+    }
+
     const userId = authData.user.id;
 
     if (!globalSupabase) {

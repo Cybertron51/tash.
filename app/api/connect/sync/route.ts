@@ -33,9 +33,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 3. Fetch the account status from Stripe (with more detail)
-        const account = await stripe.accounts.retrieve(profile.stripe_account_id, {
-            stripeAccount: process.env.STRIPE_ACCOUNT_ID,
-        });
+        const account = await stripe.accounts.retrieve(profile.stripe_account_id);
 
         // 4. Strict check: are they actually ready to receive money?
         // Express accounts need both payouts_enabled and charges_enabled (for transfers)

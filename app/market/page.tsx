@@ -572,7 +572,7 @@ function MarketPageContent() {
         </div>
 
         <div className="overflow-y-auto">
-          {selected && <TradePanel asset={selected} onRequestSignIn={() => setShowSignIn(true)} />}
+          {selected && <TradePanel asset={selected} orderBook={orderBook} onRequestSignIn={() => setShowSignIn(true)} />}
         </div>
       </aside>
 

@@ -28,7 +28,7 @@ export default function OnboardingPage() {
     // Form State
     const [username, setUsername] = useState("");
     const [favoriteTcgs, setFavoriteTcgs] = useState<string[]>([]);
-    const [primaryGoal, setPrimaryGoal] = useState("");
+    const [primaryGoals, setPrimaryGoals] = useState<string[]>([]);
 
     // UI State
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,7 +49,7 @@ export default function OnboardingPage() {
         if (
             user?.username &&
             user?.favoriteTcgs?.length > 0 &&
-            user?.primaryGoal &&
+            (user?.primaryGoal?.length ?? 0) > 0 &&
             user?.onboardingComplete
         ) {
             router.push("/portfolio");
@@ -84,7 +84,7 @@ export default function OnboardingPage() {
             await apiPatch("/api/user/profile", {
                 username,
                 favorite_tcgs: favoriteTcgs,
-                primary_goal: primaryGoal,
+                primary_goal: primaryGoals,
             });
 
             // Success - redirect to dashboard/portfolio
@@ -202,7 +202,9 @@ export default function OnboardingPage() {
                                     { id: "pokemon", name: "Pokémon", color: "from-yellow-500/20 to-yellow-600/20", border: "hover:border-yellow-500/50" },
                                     { id: "mtg", name: "Magic: The Gathering", color: "from-amber-700/20 to-amber-900/20", border: "hover:border-amber-700/50" },
                                     { id: "yugioh", name: "Yu-Gi-Oh!", color: "from-indigo-500/20 to-indigo-700/20", border: "hover:border-indigo-500/50" },
-                                    { id: "lorcana", name: "Lorcana", color: "from-purple-500/20 to-purple-700/20", border: "hover:border-purple-500/50" }
+                                    { id: "lorcana", name: "Lorcana", color: "from-purple-500/20 to-purple-700/20", border: "hover:border-purple-500/50" },
+                                    { id: "sports", name: "Sports", color: "from-red-500/20 to-red-700/20", border: "hover:border-red-500/50" },
+                                    { id: "other", name: "Other", color: "from-zinc-500/20 to-zinc-700/20", border: "hover:border-zinc-500/50" }
                                 ].map((tcg) => (
                                     <button
                                         key={tcg.id}
@@ -258,16 +260,17 @@ export default function OnboardingPage() {
                                     { id: "scanning", title: "Scanning Collection", desc: "I just want to digitize my physical cards.", icon: Search },
                                 ].map((goal) => {
                                     const Icon = goal.icon;
+                                    const isSelected = primaryGoals.includes(goal.id);
                                     return (
                                         <button
                                             key={goal.id}
-                                            onClick={() => setPrimaryGoal(goal.id)}
-                                            className={`w-full flex items-center p-4 rounded-xl border transition-all text-left ${primaryGoal === goal.id
+                                            onClick={() => setPrimaryGoals(prev => prev.includes(goal.id) ? prev.filter(g => g !== goal.id) : [...prev, goal.id])}
+                                            className={`w-full flex items-center p-4 rounded-xl border transition-all text-left ${isSelected
                                                 ? "border-blue-500 bg-blue-500/10"
                                                 : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-600"
                                                 }`}
                                         >
-                                            <div className={`p-3 rounded-lg mr-4 ${primaryGoal === goal.id ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400"}`}>
+                                            <div className={`p-3 rounded-lg mr-4 ${isSelected ? "bg-blue-500/20 text-blue-400" : "bg-zinc-800 text-zinc-400"}`}>
                                                 <Icon className="w-6 h-6" />
                                             </div>
                                             <div>
@@ -292,8 +295,8 @@ export default function OnboardingPage() {
                                 </button>
                                 <button
                                     onClick={handleComplete}
-                                    disabled={!primaryGoal || isSubmitting}
-                                    className={`flex items-center space-x-2 px-8 py-3 rounded-xl font-medium transition-colors ${!primaryGoal || isSubmitting
+                                    disabled={primaryGoals.length === 0 || isSubmitting}
+                                    className={`flex items-center space-x-2 px-8 py-3 rounded-xl font-medium transition-colors ${primaryGoals.length === 0 || isSubmitting
                                         ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
                                         : "bg-white text-black hover:bg-zinc-200"
                                         }`}

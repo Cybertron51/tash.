@@ -39,6 +39,15 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "User profile not found" }, { status: 404 });
         }
 
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (authError || !authData?.user) {
+            return NextResponse.json({ error: "Auth user not found" }, { status: 404 });
+        }
+
+        if (!authData.user.email_confirmed_at) {
+            return NextResponse.json({ error: "Please confirm your email before registering for Stripe." }, { status: 403 });
+        }
+
         let stripeAccountId = profile.stripe_account_id;
 
         // 2. Create account if it doesn't exist
@@ -63,8 +72,6 @@ export async function POST(req: NextRequest) {
                     metadata: {
                         userId: userId,
                     },
-                }, {
-                    stripeAccount: process.env.STRIPE_ACCOUNT_ID,
                 });
                 stripeAccountId = account.id;
 
@@ -93,8 +100,6 @@ export async function POST(req: NextRequest) {
                 refresh_url: `${origin}/onboarding?step=4&status=refresh`,
                 return_url: `${origin}/onboarding?step=4&status=success`,
                 type: "account_onboarding",
-            }, {
-                stripeAccount: process.env.STRIPE_ACCOUNT_ID,
             });
 
             return NextResponse.json({ url: accountLink.url });

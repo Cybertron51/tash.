@@ -24,6 +24,9 @@ const MAX_WITHDRAW_CENTS = 1_000_000; // $10,000.00
 export async function POST(req: NextRequest) {
   const auth = await verifyAuth(req);
   if (!auth) return unauthorized();
+  if (!auth.emailConfirmed) {
+    return NextResponse.json({ error: "Please confirm your email before withdrawing." }, { status: 403 });
+  }
   if (!supabaseAdmin) {
     return NextResponse.json({ error: "DB not configured" }, { status: 503 });
   }
