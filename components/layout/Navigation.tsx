@@ -16,6 +16,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
+import { CommandMenu } from "@/components/layout/CommandMenu";
 
 // ─────────────────────────────────────────────────────────
 // Nav links
@@ -28,7 +29,7 @@ interface NavLink {
 }
 
 const NAV_LINKS: NavLink[] = [
-  { href: "/", label: "Market", icon: <TrendingUp size={15} strokeWidth={2} /> },
+  { href: "/market", label: "Market", icon: <TrendingUp size={15} strokeWidth={2} /> },
   { href: "/portfolio", label: "Portfolio", icon: <BarChart2 size={15} strokeWidth={2} /> },
 ];
 
@@ -184,6 +185,7 @@ export function Navigation() {
   const router = useRouter();
   const { isAuthenticated } = useAuth();
   const [showSignIn, setShowSignIn] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   return (
     <>
@@ -263,6 +265,7 @@ export function Navigation() {
 
           {/* Search */}
           <button
+            onClick={() => setShowSearch(true)}
             className="flex items-center gap-2 rounded-[10px] border px-3 py-[7px] text-[13px] transition-colors duration-150 hover:border-[#3E3E3E]"
             style={{ color: colors.textMuted, borderColor: colors.border }}
             aria-label="Search cards"
@@ -312,6 +315,7 @@ export function Navigation() {
         </div>
       </header>
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
+      <CommandMenu open={showSearch} setOpen={setShowSearch} />
     </>
   );
 }
