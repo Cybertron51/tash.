@@ -49,3 +49,5 @@ supabase/.branches/
 RECREATE_PROMPT.md
 PRODUCTION.md
 BETA_TESTING.md
+
+public/cards/*
