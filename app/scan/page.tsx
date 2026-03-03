@@ -378,7 +378,7 @@ export default function ScanPage() {
 
       try {
         // 1. Save to Supabase DB using our helper — include card metadata for catalog auto-creation
-        await insertVaultHolding(newHolding, undefined, {
+        const dbRes: any = await insertVaultHolding(newHolding, undefined, {
           name: result.name,
           category: result.category,
           set: result.set,
@@ -386,6 +386,10 @@ export default function ScanPage() {
           grade: Math.round(result.estimatedGrade ?? 9),
           cardNumber: result.cardNumber,
         });
+
+        if (dbRes && dbRes.id) {
+          newHolding.id = dbRes.id;
+        }
 
         // 2. Update local context immediately
         addHolding(newHolding);

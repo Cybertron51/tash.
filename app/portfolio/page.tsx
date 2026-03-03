@@ -18,7 +18,7 @@ import Image from "next/image";
 import { tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
 import { type VaultHolding } from "@/lib/vault-data";
-import { updateVaultHoldingStatus } from "@/lib/db/vault";
+import { updateVaultHoldingStatus, insertVaultHolding } from "@/lib/db/vault";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -316,33 +316,48 @@ export default function PortfolioPage() {
   const modalValue = modalHolding ? (priceMap[modalHolding.symbol] ?? 0) : 0;
 
   // ── Deposit handler ────────────────────────────────────
-  function confirmDeposit(form: DepositForm) {
+  async function confirmDeposit(form: DepositForm) {
     const asset = assets.find((a) => a.symbol === form.symbol);
     if (!asset) return;
-    const newHolding: VaultHolding = {
-      id: `v${Date.now()}`,
-      name: asset.name,
-      symbol: asset.symbol,
-      grade: form.grade,
-      set: asset.set,
-      year: new Date().getFullYear(),
-      acquisitionPrice: form.acquisitionPrice,
-      status: "tradable",
-      dateDeposited: new Date().toISOString().split("T")[0],
-      certNumber: form.certNumber || `PSA ${Math.floor(Math.random() * 90000000 + 10000000)}`,
-      imageUrl: form.photoUrl ?? asset.imageUrl ?? `/cards/${asset.symbol}.svg`,
-    };
-    addHolding(newHolding);
-    setSelectedId(newHolding.id);
-    setActivities((prev) => [...prev, {
-      id: `a${Date.now()}`,
-      type: "deposit",
-      cardName: asset.name,
-      grade: form.grade,
-      amount: form.acquisitionPrice,
-      timestamp: new Date(),
-    }]);
-    setModalState(null);
+
+    try {
+      const dbRes: any = await insertVaultHolding({
+        symbol: asset.symbol,
+        acquisitionPrice: form.acquisitionPrice,
+        status: "tradable",
+        certNumber: form.certNumber || `PSA ${Math.floor(Math.random() * 90000000 + 10000000)}`,
+        imageUrl: form.photoUrl ?? asset.imageUrl ?? `/cards/${asset.symbol}.svg`,
+      });
+
+      const newHolding: VaultHolding = {
+        id: dbRes?.id || `v${Date.now()}`,
+        name: asset.name,
+        symbol: asset.symbol,
+        grade: form.grade,
+        set: asset.set,
+        year: new Date().getFullYear(),
+        acquisitionPrice: form.acquisitionPrice,
+        status: "tradable",
+        dateDeposited: new Date().toISOString().split("T")[0],
+        certNumber: form.certNumber || `PSA ${Math.floor(Math.random() * 90000000 + 10000000)}`,
+        imageUrl: form.photoUrl ?? asset.imageUrl ?? `/cards/${asset.symbol}.svg`,
+      };
+
+      addHolding(newHolding);
+      setSelectedId(newHolding.id);
+      setActivities((prev) => [...prev, {
+        id: `a${Date.now()}`,
+        type: "deposit",
+        cardName: asset.name,
+        grade: form.grade,
+        amount: form.acquisitionPrice,
+        timestamp: new Date(),
+      }]);
+      setModalState(null);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save deposit");
+    }
   }
 
   if (isLoading) {
