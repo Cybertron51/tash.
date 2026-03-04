@@ -47,34 +47,35 @@ function getFillLikelihood(
 ): { pct: number; label: string; barColor: string; hint: string } {
   let pct: number;
 
+  // More lenient: give credit even outside the spread, with a 15% buffer
   if (side === "buy") {
     if (price >= bestAsk) pct = 1;
-    else if (price <= bestBid) pct = 0.04;
-    else pct = (price - bestBid) / (bestAsk - bestBid);
+    else if (price <= bestBid * 0.85) pct = 0.08;
+    else pct = 0.15 + 0.85 * ((price - bestBid * 0.85) / (bestAsk - bestBid * 0.85));
   } else {
     if (price <= bestBid) pct = 1;
-    else if (price >= bestAsk) pct = 0.04;
-    else pct = (bestAsk - price) / (bestAsk - bestBid);
+    else if (price >= bestAsk * 1.15) pct = 0.08;
+    else pct = 0.15 + 0.85 * ((bestAsk * 1.15 - price) / (bestAsk * 1.15 - bestBid));
   }
 
-  pct = Math.min(1, Math.max(0.02, pct));
+  pct = Math.min(1, Math.max(0.05, pct));
 
   const label =
-    pct >= 0.95 ? "Immediate fill" :
-      pct >= 0.70 ? "High" :
-        pct >= 0.40 ? "Medium" :
-          pct >= 0.15 ? "Low" : "Very low";
+    pct >= 0.90 ? "Immediate fill" :
+      pct >= 0.55 ? "High" :
+        pct >= 0.25 ? "Medium" :
+          pct >= 0.10 ? "Low" : "Very low";
 
   const barColor =
-    pct >= 0.70 ? colors.green :
-      pct >= 0.40 ? "#f59e0b" : colors.red;
+    pct >= 0.55 ? colors.green :
+      pct >= 0.25 ? "#f59e0b" : colors.red;
 
   const hint =
     side === "buy"
-      ? pct >= 0.95
+      ? pct >= 0.90
         ? "Your bid meets or exceeds the ask — this fills immediately."
         : "Raise your bid closer to the ask to increase fill likelihood."
-      : pct >= 0.95
+      : pct >= 0.90
         ? "Your ask meets or is below the bid — this fills immediately."
         : "Lower your ask closer to the bid to increase fill likelihood.";
 

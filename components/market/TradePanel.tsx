@@ -66,7 +66,7 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
   let likelihoodText = "";
   let likelihoodPct = 0;
 
-  if (orderType === "limit" && orderBook) {
+  if (orderBook) {
     const bestOpposingPrice = isBuy
       ? orderBook.asks.length > 0 ? orderBook.asks[0].price : null
       : orderBook.bids.length > 0 ? orderBook.bids[0].price : null;
@@ -390,15 +390,18 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
               outline: "none",
             }}
           />
+        </div>
+      )}
 
-          <div className="mt-2 rounded-[8px] px-3 py-2" style={{ background: colors.surfaceRaised, border: `1px solid ${colors.borderSubtle}` }}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Fill Likelihood</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: likelihoodColor }}>{likelihoodText || "N/A"}</span>
-            </div>
-            <div className="w-full h-1.5 rounded-full" style={{ background: colors.border }}>
-              <div className="h-full rounded-full transition-all duration-300 ease-out" style={{ width: `${likelihoodPct}%`, background: likelihoodColor }} />
-            </div>
+      {/* Fill likelihood — shown for all order types */}
+      {fillLikelihood && (
+        <div className="rounded-[8px] px-3 py-2" style={{ background: colors.surfaceRaised, border: `1px solid ${colors.borderSubtle}` }}>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Fill Likelihood</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: likelihoodColor }}>{likelihoodText}</span>
+          </div>
+          <div className="w-full h-1.5 rounded-full" style={{ background: colors.border }}>
+            <div className="h-full rounded-full transition-all duration-300 ease-out" style={{ width: `${likelihoodPct}%`, background: likelihoodColor }} />
           </div>
         </div>
       )}
