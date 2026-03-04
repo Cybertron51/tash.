@@ -21,18 +21,33 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const connectSecret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
 
-  if (!sig || !webhookSecret) {
+  if (!sig || (!webhookSecret && !connectSecret)) {
     return NextResponse.json({ error: "Missing signature or secret" }, { status: 400 });
   }
 
   let event;
-
   try {
-    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    // Try standard webhook secret first
+    if (webhookSecret) {
+      event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+    } else {
+      throw new Error("Missing Standard Webhook Secret");
+    }
   } catch (err: any) {
-    console.error("[webhook] Signature verification failed:", err.message);
-    return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
+    // Fallback to Connect webhook secret if it exists
+    if (connectSecret) {
+      try {
+        event = stripe.webhooks.constructEvent(body, sig, connectSecret);
+      } catch (connectErr: any) {
+        console.error("[webhook] Signature verification failed for both secrets:", connectErr.message);
+        return NextResponse.json({ error: `Webhook Error: ${connectErr.message}` }, { status: 400 });
+      }
+    } else {
+      console.error("[webhook] Signature verification failed:", err.message);
+      return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
+    }
   }
 
   try {

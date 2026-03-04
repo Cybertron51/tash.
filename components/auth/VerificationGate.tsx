@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ShieldCheck, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { colors } from "@/lib/theme";
@@ -16,6 +17,7 @@ interface VerificationGateProps {
  */
 export function VerificationGate({ children }: VerificationGateProps) {
     const { isAuthenticated, user, refreshProfile } = useAuth();
+    const pathname = usePathname();
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
@@ -69,7 +71,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
 
             <div className="flex flex-col w-full max-w-[320px] gap-3">
                 <Link
-                    href="/onboarding?step=4"
+                    href={`/onboarding?step=4${pathname ? `&returnTo=${encodeURIComponent(pathname)}` : ""}`}
                     className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[14px] font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
                     style={{ background: colors.green, color: colors.textInverse }}
                 >

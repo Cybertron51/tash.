@@ -52,9 +52,10 @@ export default function OnboardingPage() {
             (user?.primaryGoal?.length ?? 0) > 0 &&
             user?.onboardingComplete
         ) {
-            router.push("/portfolio");
+            const returnTo = searchParams.get("returnTo");
+            router.push(returnTo || "/portfolio");
         }
-    }, [user, router]);
+    }, [user, router, searchParams]);
 
     // Require session, redirect otherwise after short delay
     useEffect(() => {
@@ -88,7 +89,8 @@ export default function OnboardingPage() {
             });
 
             // Success - redirect to dashboard/portfolio
-            router.push("/portfolio");
+            const returnTo = searchParams.get("returnTo");
+            router.push(returnTo || "/portfolio");
             router.refresh();
         } catch (err: unknown) {
             console.error(err);
@@ -350,7 +352,11 @@ export default function OnboardingPage() {
                                             const res = await fetch("/api/connect", {
                                                 method: "POST",
                                                 headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ userId: user.id, email: user.email }),
+                                                body: JSON.stringify({
+                                                    userId: user.id,
+                                                    email: user.email,
+                                                    returnTo: searchParams.get("returnTo")
+                                                }),
                                             });
                                             const data = await res.json();
                                             if (data.url) {
@@ -377,7 +383,7 @@ export default function OnboardingPage() {
                                 </button>
 
                                 <button
-                                    onClick={() => router.push("/portfolio")}
+                                    onClick={() => router.push(searchParams.get("returnTo") || "/portfolio")}
                                     className="w-full text-zinc-500 hover:text-white py-2 text-sm transition-colors"
                                 >
                                     I'll do this later

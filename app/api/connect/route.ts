@@ -16,7 +16,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
 export async function POST(req: NextRequest) {
     try {
-        const { userId, email } = await req.json();
+        const { userId, email, returnTo } = await req.json();
 
         if (!userId || !email) {
             return NextResponse.json({ error: "Missing userId or email" }, { status: 400 });
@@ -93,12 +93,12 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 3. Create an Account Link for onboarding
         try {
+            const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : "";
             const accountLink = await stripe.accountLinks.create({
                 account: stripeAccountId,
-                refresh_url: `${origin}/onboarding?step=4&status=refresh`,
-                return_url: `${origin}/onboarding?step=4&status=success`,
+                refresh_url: `${origin}/onboarding?step=4&status=refresh${returnToParam}`,
+                return_url: `${origin}/onboarding?step=4&status=success${returnToParam}`,
                 type: "account_onboarding",
             });
 
