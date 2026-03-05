@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     "collectibles market",
   ],
   verification: {
-    google: "UrU2uYL1CDVRP1s7NspoaCL-y2uiUk5jCf_mIJT9KXY",
+    google: "SWWyYQ61cKdxzvyEMKqijk7OaNzFQLIInQo8F6tgxUs",
   },
   openGraph: {
     title: "tash — Trading Card Exchange",
