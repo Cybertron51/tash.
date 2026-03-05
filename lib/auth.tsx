@@ -23,6 +23,7 @@ export interface User {
   email: string;
   initials: string;
   cashBalance: number;
+  withdrawableBalance: number;
   lockedBalance: number;
   walletAddress: string;
   memberSince: string;
@@ -79,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: email,
         initials: (data.name || "U")[0].toUpperCase(),
         cashBalance: Number(data.cash_balance),
+        withdrawableBalance: data.withdrawable_balance !== undefined ? Number(data.withdrawable_balance) : Number(data.cash_balance),
         lockedBalance: Number(data.locked_balance || 0),
         walletAddress: "0x0000000000000000000000000000000000000000",
         memberSince: year,
@@ -136,7 +138,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateBalance = useCallback((delta: number) => {
     setUser((prev) =>
-      prev ? { ...prev, cashBalance: Math.max(0, prev.cashBalance + delta) } : null
+      prev ? {
+        ...prev,
+        cashBalance: Math.max(0, prev.cashBalance + delta),
+        withdrawableBalance: Math.max(0, prev.withdrawableBalance + delta)
+      } : null
     );
   }, []);
 

@@ -130,7 +130,8 @@ export default function WithdrawPage() {
                     {stage === "amount" && (
                         <AmountStage
                             onContinue={handleWithdraw}
-                            availableBalance={user?.cashBalance ?? 0}
+                            availableBalance={user?.withdrawableBalance ?? 0}
+                            totalBalance={user?.cashBalance ?? 0}
                             loading={loading}
                             error={error}
                         />
@@ -139,7 +140,7 @@ export default function WithdrawPage() {
                     {stage === "success" && amount != null && (
                         <SuccessStage
                             amount={amount}
-                            balance={user?.cashBalance ?? 0}
+                            balance={user?.withdrawableBalance ?? 0}
                         />
                     )}
                 </VerificationGate>
@@ -155,11 +156,13 @@ export default function WithdrawPage() {
 function AmountStage({
     onContinue,
     availableBalance,
+    totalBalance,
     loading,
     error,
 }: {
     onContinue: (amount: number) => void;
     availableBalance: number;
+    totalBalance: number;
     loading: boolean;
     error: string | null;
 }) {
@@ -258,6 +261,14 @@ function AmountStage({
                     Add Funds
                 </Link>
             </div>
+
+            {totalBalance > availableBalance && (
+                <div style={{ marginBottom: 24, marginTop: -16, padding: "0 4px" }}>
+                    <p style={{ fontSize: 13, color: colors.textSecondary, margin: 0, lineHeight: 1.4 }}>
+                        <strong>Total Balance: {formatCurrency(totalBalance)}.</strong> Unsettled funds from recent deposits or sales take 3 business days to become withdrawable.
+                    </p>
+                </div>
+            )}
 
             {/* Error banner */}
             {displayError && (

@@ -285,19 +285,106 @@ export default function ScanPage() {
       // Attempt to read barcode locally first for speed
       let scannedCert: string | undefined;
       try {
-        const codeReader = new BrowserMultiFormatReader();
         const htmlImageObj = new Image();
         htmlImageObj.src = `data:${item.mimeType};base64,${item.imageBase64}`;
         await new Promise((resolve) => {
           htmlImageObj.onload = resolve;
         });
-        const result = await codeReader.decodeFromImageElement(htmlImageObj);
-        if (result && result.getText()) {
-          scannedCert = result.getText();
+
+        // Build a canvas from the image
+        const canvas = document.createElement("canvas");
+        canvas.width = htmlImageObj.naturalWidth;
+        canvas.height = htmlImageObj.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        ctx?.drawImage(htmlImageObj, 0, 0);
+
+        const isPSACert = (text: string) => /^\d{7,8}$/.test(text.trim());
+
+        // Helper: create an ImageBitmap from a canvas crop for BarcodeDetector
+        async function tryBarcodeDetector(sourceCanvas: HTMLCanvasElement): Promise<string | undefined> {
+          if (typeof window === "undefined" || !("BarcodeDetector" in window)) return undefined;
+          try {
+            // @ts-ignore — BarcodeDetector is not in all TS lib types yet
+            const detector = new (window as any).BarcodeDetector({ formats: ["code_128", "code_39", "ean_13", "ean_8", "itf"] });
+            const bitmap = await createImageBitmap(sourceCanvas);
+            const barcodes = await detector.detect(bitmap);
+            for (const barcode of barcodes) {
+              if (isPSACert(barcode.rawValue)) return barcode.rawValue.trim();
+            }
+          } catch { /* BarcodeDetector failed */ }
+          return undefined;
+        }
+
+        // Helper: try zxing on an image element
+        async function tryZxing(imgEl: HTMLImageElement): Promise<string | undefined> {
+          try {
+            const codeReader = new BrowserMultiFormatReader();
+            const result = await codeReader.decodeFromImageElement(imgEl);
+            const text = result?.getText();
+            if (text && isPSACert(text)) return text.trim();
+          } catch { /* zxing failed */ }
+          return undefined;
+        }
+
+        const tryAllMethods = async (): Promise<string | undefined> => {
+          // --- Method 1: BarcodeDetector on full image ---
+          let cert = await tryBarcodeDetector(canvas);
+          if (cert) { console.log("BarcodeDetector: found on full image"); return cert; }
+
+          // --- Method 2: BarcodeDetector on top 30% crop (PSA label area) ---
+          const cropCanvas = document.createElement("canvas");
+          const cropHeight = Math.round(canvas.height * 0.30);
+          cropCanvas.width = canvas.width;
+          cropCanvas.height = cropHeight;
+          const cropCtx = cropCanvas.getContext("2d");
+          if (cropCtx) {
+            cropCtx.drawImage(canvas, 0, 0, canvas.width, cropHeight, 0, 0, canvas.width, cropHeight);
+            cert = await tryBarcodeDetector(cropCanvas);
+            if (cert) { console.log("BarcodeDetector: found on cropped label"); return cert; }
+
+            // --- Method 3: BarcodeDetector on upscaled crop (2x) ---
+            const upCanvas = document.createElement("canvas");
+            upCanvas.width = cropCanvas.width * 2;
+            upCanvas.height = cropCanvas.height * 2;
+            const upCtx = upCanvas.getContext("2d");
+            if (upCtx) {
+              upCtx.imageSmoothingEnabled = true;
+              upCtx.imageSmoothingQuality = "high";
+              upCtx.drawImage(cropCanvas, 0, 0, upCanvas.width, upCanvas.height);
+              cert = await tryBarcodeDetector(upCanvas);
+              if (cert) { console.log("BarcodeDetector: found on upscaled crop"); return cert; }
+            }
+          }
+
+          // --- Fallback: zxing on full image ---
+          cert = await tryZxing(htmlImageObj);
+          if (cert) { console.log("zxing: found on full image"); return cert; }
+
+          // --- Fallback: zxing on cropped label ---
+          if (cropCtx) {
+            const cropImg = new Image();
+            cropImg.src = cropCanvas.toDataURL("image/png");
+            await new Promise((resolve) => { cropImg.onload = resolve; });
+            cert = await tryZxing(cropImg);
+            if (cert) { console.log("zxing: found on cropped label"); return cert; }
+          }
+
+          return undefined;
+        };
+
+        // Timeout after 4 seconds
+        const decodeResult = await Promise.race([
+          tryAllMethods(),
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 4000)),
+        ]);
+        scannedCert = decodeResult;
+        if (scannedCert) {
+          console.log(`Barcode detected locally: ${scannedCert}`);
+        } else {
+          console.log("No barcode detected locally after all attempts");
         }
       } catch (err) {
-        // Barcode reader might fail if no barcode is found, this is fine
-        console.log("No barcode detected locally or error decoding:", err);
+        console.log("Barcode detection error:", err);
       }
 
       const res = await fetch("/api/scan", {

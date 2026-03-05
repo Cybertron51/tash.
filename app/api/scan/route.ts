@@ -100,13 +100,46 @@ export async function POST(req: NextRequest) {
       return null;
     }
 
-    // ─── FAST PATH: barcode cert number already available → skip Gemini ───
+    // ─── FAST PATH: barcode cert number already available → start with PSA API ───
     if (certNumberLocalScan) {
-      console.log(`Barcode cert number detected: ${certNumberLocalScan} — using PSA API directly (skipping Gemini)`);
+      console.log(`Barcode cert number detected: ${certNumberLocalScan} — using PSA API first`);
       const psaData = await fetchPSAMetadata(certNumberLocalScan);
 
       if (psaData) {
         const card = buildCardFromPSA(psaData, certNumberLocalScan);
+
+        const needsGrade = !psaData.CardGrade;
+        const needsName = card.name === "Unknown Card";
+        const needsSet = card.set === "Unknown Set";
+
+        // If PSA didn't return a grade, name, or set, use Gemini to read from the image
+        if (needsGrade || needsName || needsSet) {
+          console.warn(`PSA API returned incomplete data for ${certNumberLocalScan} — using Gemini to extract missing fields`);
+          const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+          const result = await model.generateContent([
+            { inlineData: { mimeType, data: imageBase64 } },
+            { text: buildPrompt() },
+          ]);
+          const rawText = result.response.text();
+          const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+          try {
+            const aiResult = JSON.parse(cleaned);
+            if (needsGrade && aiResult.psaGrade) {
+              console.log(`Gemini extracted grade: ${aiResult.psaGrade}`);
+              card.estimatedGrade = aiResult.psaGrade;
+            }
+            if (needsName && aiResult.cardName && aiResult.cardName !== "Unknown Card") {
+              console.log(`Gemini extracted name: ${aiResult.cardName}`);
+              card.name = aiResult.cardName;
+            }
+            if (needsSet && aiResult.setName && aiResult.setName !== "Unknown Set") {
+              console.log(`Gemini extracted set: ${aiResult.setName}`);
+              card.set = aiResult.setName;
+            }
+          } catch {
+            console.error("Failed to parse Gemini fallback response");
+          }
+        }
 
         // Fuzzy-match, image fetch, and raw scan upload in parallel
         const [matchedAsset, imageUrl, rawImageUrl] = await Promise.all([
@@ -135,8 +168,8 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // PSA lookup failed for this cert number — fall through to Gemini
-      console.warn(`PSA lookup failed for cert ${certNumberLocalScan}, falling back to Gemini`);
+      // PSA lookup failed for this cert number — fall through to full Gemini
+      console.warn(`PSA lookup failed for cert ${certNumberLocalScan}, falling back to full Gemini extraction`);
     }
 
     // ─── SLOW PATH: no barcode → use Gemini AI to identify the card ───

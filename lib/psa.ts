@@ -12,26 +12,37 @@ export async function fetchPSAImage(certNumber: string): Promise<string | null> 
     }
 
     try {
-        const res = await fetch(`https://api.psacard.com/publicapi/cert/GetImagesByCertNumber/${certNumber}`, {
+        const url = `https://api.psacard.com/publicapi/cert/GetImagesByCertNumber/${certNumber}`;
+        console.log(`[PSA Images] GET ${url}`);
+        const res = await fetch(url, {
             headers: {
                 Authorization: `Bearer ${token}`
             }
         });
 
+        console.log(`[PSA Images] Response status: ${res.status} ${res.statusText}`);
+
         if (!res.ok) {
+            const errorBody = await res.text().catch(() => "<unable to read body>");
+            console.error(`[PSA Images] Error response body: ${errorBody}`);
             if (res.status === 404) return null;
-            console.error(`PSA API error for cert ${certNumber}: ${res.statusText}`);
             return null;
         }
 
         const data = await res.json();
-        if (!Array.isArray(data)) return null;
+        console.log(`[PSA Images] Response data:`, JSON.stringify(data, null, 2));
+
+        if (!Array.isArray(data)) {
+            console.warn(`[PSA Images] Expected array, got:`, typeof data);
+            return null;
+        }
 
         // Find the front image
         const frontImage = data.find((img: any) => img.IsFront === true);
+        console.log(`[PSA Images] Front image URL: ${frontImage?.ImageUrl || "none"}`);
         return frontImage?.ImageUrl || null;
     } catch (error) {
-        console.error("Error fetching PSA image:", error);
+        console.error("[PSA Images] Exception:", error);
         return null;
     }
 }
@@ -42,24 +53,40 @@ export async function fetchPSAImage(certNumber: string): Promise<string | null> 
  */
 export async function fetchPSAMetadata(certNumber: string): Promise<any | null> {
     const token = process.env.PSA_API_TOKEN;
-    if (!token) return null;
+    if (!token) {
+        console.warn("[PSA Metadata] PSA_API_TOKEN is not set, skipping.");
+        return null;
+    }
 
     try {
-        const res = await fetch(`https://api.psacard.com/publicapi/cert/GetByCertNumber/${certNumber}`, {
+        const url = `https://api.psacard.com/publicapi/cert/GetByCertNumber/${certNumber}`;
+        console.log(`[PSA Metadata] GET ${url}`);
+        const res = await fetch(url, {
             headers: {
                 Authorization: `Bearer ${token}`
             }
         });
 
+        console.log(`[PSA Metadata] Response status: ${res.status} ${res.statusText}`);
+
         if (!res.ok) {
-            console.error(`PSA Metadata API error for cert ${certNumber}: ${res.statusText}`);
+            const errorBody = await res.text().catch(() => "<unable to read body>");
+            console.error(`[PSA Metadata] Error response body: ${errorBody}`);
             return null;
         }
 
         const data = await res.json();
-        return data.PSACert;
+        console.log(`[PSA Metadata] Full response:`, JSON.stringify(data, null, 2));
+
+        const cert = data.PSACert;
+        if (cert) {
+            console.log(`[PSA Metadata] Parsed — Subject: ${cert.Subject}, CardSet: ${cert.CardSet}, Year: ${cert.Year}, Grade: ${cert.CardGrade}, Brand: ${cert.Brand}, Player: ${cert.Player}`);
+        } else {
+            console.warn(`[PSA Metadata] No PSACert field in response. Keys: ${Object.keys(data).join(", ")}`);
+        }
+        return cert;
     } catch (error) {
-        console.error("Error fetching PSA metadata:", error);
+        console.error("[PSA Metadata] Exception:", error);
         return null;
     }
 }

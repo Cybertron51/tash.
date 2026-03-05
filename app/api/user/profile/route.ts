@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin, verifyAuth, unauthorized } from "@/lib/supabase-admin";
+import { getUnsettledFunds } from "@/lib/wallet";
 
 /**
  * GET /api/user/profile — Returns authenticated user's profile.
@@ -20,7 +21,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    const unsettledFunds = await getUnsettledFunds(auth.userId);
+    const withdrawable_balance = Math.max(0, Number(data.cash_balance) - unsettledFunds);
+
+    return NextResponse.json({
+        ...data,
+        withdrawable_balance
+    });
 }
 
 export async function PATCH(req: NextRequest) {
