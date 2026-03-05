@@ -65,9 +65,10 @@ export async function GET(req: NextRequest) {
       status,
       image_url,
       raw_image_url,
+      shipping_address,
       profiles(name, email)
     `)
-        .in("status", ["shipped", "pending_authentication"])
+        .in("status", ["shipped", "pending_authentication", "returning"])
         .order("created_at", { ascending: false });
 
     console.log(`[Admin GET] Fetching shipped/pending items. User: ${auth.userId}`);

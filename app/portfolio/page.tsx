@@ -235,7 +235,7 @@ export default function PortfolioPage() {
     setModalState({ type: "ship", holdingId: id });
   }
 
-  async function confirmWithdrawal() {
+  async function confirmWithdrawal(shippingAddress: string) {
     if (!modalState || modalState.type !== "withdraw") return;
     const holding = holdings.find((h) => h.id === modalState.holdingId);
     if (!holding) return;
@@ -251,6 +251,7 @@ export default function PortfolioPage() {
           type: "holding",
           holdingId: holding.id,
           currentValueUsd: priceMap[holding.symbol] ?? 0,
+          shippingAddress,
         }),
       });
 
@@ -261,7 +262,7 @@ export default function PortfolioPage() {
         return;
       }
 
-      updateHolding(modalState.holdingId, { status: "withdrawn" });
+      updateHolding(modalState.holdingId, { status: "returning" });
       setActivities((prev) => [...prev, {
         id: `a${Date.now()}`,
         type: "withdrawn",
@@ -707,7 +708,7 @@ export default function PortfolioPage() {
                 holding={modalHolding}
                 currentValue={modalValue}
                 onCancel={() => setModalState(null)}
-                onConfirm={confirmWithdrawal}
+                onConfirm={(address: string) => confirmWithdrawal(address)}
               />
             )}
           </div>
@@ -1301,6 +1302,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
     in_transit: { label: "In Transit", bg: "rgba(245,200,66,0.15)", color: "#F5C842" }, // legacy/fallback for withdrawal
     withdrawn: { label: "Withdrawn", bg: colors.surfaceOverlay, color: colors.textMuted },
     listed: { label: "Listed for Sale", bg: colors.surface, color: colors.textSecondary },
+    returning: { label: "Returning", bg: "rgba(59,130,246,0.15)", color: "#3B82F6" },
   };
 
   const status = statusConfig[holding.status];
@@ -1476,12 +1478,26 @@ interface WithdrawModalProps {
   holding: VaultHolding;
   currentValue: number;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (address: string) => void;
 }
 
 function WithdrawModal({ holding, currentValue, onCancel, onConfirm }: WithdrawModalProps) {
   const fee = currentValue * 0.035;
   const net = currentValue * 0.965;
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
+  const canSubmit = street.trim() && city.trim() && state.trim() && zip.trim();
+  const inputStyle: React.CSSProperties = { width: "100%", background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.textPrimary, fontSize: 13, padding: "9px 12px", outline: "none", boxSizing: "border-box" };
+  const labelStyle: React.CSSProperties = { display: "block", color: colors.textMuted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
+
+  function handleConfirm() {
+    if (!canSubmit) return;
+    const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} ${zip.trim()}`;
+    onConfirm(fullAddress);
+  }
+
   return (
     <>
       <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
@@ -1503,12 +1519,26 @@ function WithdrawModal({ holding, currentValue, onCancel, onConfirm }: WithdrawM
           <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 700 }}>{formatCurrency(net)}</span>
         </div>
       </div>
+
+      {/* Shipping Address */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={labelStyle}>Shipping Address</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input type="text" placeholder="Street Address" value={street} onChange={(e) => setStreet(e.target.value)} style={inputStyle} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <input type="text" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} style={{ ...inputStyle, flex: 2 }} />
+            <input type="text" placeholder="State" value={state} onChange={(e) => setState(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            <input type="text" placeholder="ZIP" value={zip} onChange={(e) => setZip(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+          </div>
+        </div>
+      </div>
+
       <div style={{ background: colors.goldMuted, border: `1px solid ${colors.gold}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}>
         <p style={{ color: colors.gold, fontSize: 12, lineHeight: 1.5 }}>⚠ Physical delivery takes 7–14 business days</p>
       </div>
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, background: "transparent", border: `1px solid ${colors.border}`, borderRadius: 10, color: colors.textSecondary, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer" }}>Cancel</button>
-        <button onClick={onConfirm} style={{ flex: 1, background: colors.gold, border: `1px solid ${colors.gold}`, borderRadius: 10, color: colors.textInverse, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer" }}>Confirm Withdrawal →</button>
+        <button onClick={handleConfirm} style={{ flex: 1, background: canSubmit ? colors.gold : colors.surface, border: `1px solid ${canSubmit ? colors.gold : colors.border}`, borderRadius: 10, color: canSubmit ? colors.textInverse : colors.textMuted, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: canSubmit ? "pointer" : "not-allowed" }}>Confirm Withdrawal →</button>
       </div>
     </>
   );
@@ -1729,9 +1759,8 @@ function ShipModal({ holding, onCancel, onConfirm }: ShipModalProps) {
         <div style={{ background: colors.background, borderRadius: 6, padding: "12px 16px", border: `1px solid ${colors.borderSubtle}` }}>
           <p style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600, fontFamily: "monospace", margin: 0 }}>TASH VAULT INGESTION</p>
           <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>ATTN: User {holding.id.slice(-6)}</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>100 Cardboard Way</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>Suite 400</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>Los Angeles, CA 90015</p>
+          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>2522 Dwight Way</p>
+          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>Berkeley, CA 94704</p>
         </div>
         <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 12, lineHeight: 1.4 }}>
           Please pack securely with a bubble mailer and tracking number. We recommend insuring packages over $1,000.

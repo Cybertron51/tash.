@@ -147,10 +147,14 @@ async function handleCashWithdrawal(userId: string, body: any) {
 // ─────────────────────────────────────────────────────────
 
 async function handleHoldingWithdrawal(userId: string, body: any) {
-  const { holdingId, currentValueUsd } = body;
+  const { holdingId, currentValueUsd, shippingAddress } = body;
 
   if (!holdingId || !currentValueUsd) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  if (!shippingAddress || typeof shippingAddress !== "string" || !shippingAddress.trim()) {
+    return NextResponse.json({ error: "Shipping address is required" }, { status: 400 });
   }
 
   // 1. Calculate 3.5% withdrawal fee
@@ -171,10 +175,10 @@ async function handleHoldingWithdrawal(userId: string, body: any) {
     return NextResponse.json({ error: "Insufficient funds to cover withdrawal fee" }, { status: 400 });
   }
 
-  // 3. Update holding status to 'withdrawn'
+  // 3. Update holding status to 'returning' and save shipping address
   const { error: updateErr, data: updatedData } = await supabaseAdmin!
     .from("vault_holdings")
-    .update({ status: "withdrawn" })
+    .update({ status: "returning", shipping_address: shippingAddress.trim() })
     .eq("id", holdingId)
     .eq("user_id", userId)
     .eq("status", "tradable")

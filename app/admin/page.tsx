@@ -128,8 +128,16 @@ export default function AdminPage() {
                                         <div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                                                 <span style={{ fontSize: 18, fontWeight: 800, color: colors.textPrimary }}>{item.name || "Unknown Card"}</span>
-                                                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : "rgba(245,130,66,0.15)", color: item.status === "shipped" ? "#F5C842" : "#F58242", textTransform: "uppercase" }}>
-                                                    {item.status === "shipped" ? "Shipped" : "Pending"}
+                                                <span style={{
+                                                    fontSize: 11,
+                                                    fontWeight: 700,
+                                                    padding: "2px 6px",
+                                                    borderRadius: 4,
+                                                    background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : item.status === "returning" ? "rgba(59,130,246,0.15)" : "rgba(245,130,66,0.15)",
+                                                    color: item.status === "shipped" ? "#F5C842" : item.status === "returning" ? "#3B82F6" : "#F58242",
+                                                    textTransform: "uppercase"
+                                                }}>
+                                                    {item.status === "shipped" ? "Shipped" : item.status === "returning" ? "Returning" : "Pending"}
                                                 </span>
                                             </div>
                                             <p style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 4 }}>
@@ -162,33 +170,40 @@ export default function AdminPage() {
                                         <p style={{ fontSize: 13, color: colors.textSecondary, margin: 0 }}>
                                             Owner: <span style={{ color: colors.textPrimary, fontWeight: 600 }}>{item.profiles?.name || item.profiles?.email || "Unknown"}</span>
                                         </p>
+                                        {item.status === "returning" && item.shipping_address && (
+                                            <p style={{ fontSize: 12, color: colors.textMuted, marginTop: 8, fontStyle: "italic" }}>
+                                                Ship to: <span style={{ color: colors.textPrimary }}>{item.shipping_address}</span>
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* Actions */}
-                                <button
-                                    onClick={() => approveItem(item.id)}
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 6,
-                                        padding: "10px 16px",
-                                        borderRadius: 8,
-                                        background: colors.green,
-                                        color: colors.textInverse,
-                                        border: "none",
-                                        fontWeight: 700,
-                                        fontSize: 13,
-                                        cursor: "pointer",
-                                        transition: "transform 0.1s",
-                                    }}
-                                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
-                                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                                    onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                                >
-                                    <Check size={14} strokeWidth={3} />
-                                    Approve & Vault
-                                </button>
+                                {item.status !== "returning" && (
+                                    <button
+                                        onClick={() => approveItem(item.id)}
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            padding: "10px 16px",
+                                            borderRadius: 8,
+                                            background: colors.green,
+                                            color: colors.textInverse,
+                                            border: "none",
+                                            fontWeight: 700,
+                                            fontSize: 13,
+                                            cursor: "pointer",
+                                            transition: "transform 0.1s",
+                                        }}
+                                        onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                                        onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                        onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                    >
+                                        <Check size={14} strokeWidth={3} />
+                                        Approve & Vault
+                                    </button>
+                                )}
 
                             </div>
                         ))}

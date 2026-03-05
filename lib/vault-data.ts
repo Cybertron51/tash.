@@ -14,12 +14,13 @@ export interface VaultHolding {
   set: string;
   year: number;
   acquisitionPrice: number;
-  status: "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "in_transit" | "withdrawn" | "listed";
+  status: "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "in_transit" | "withdrawn" | "listed" | "returning";
   dateDeposited: string; // ISO date string
   certNumber: string;    // mock PSA cert number
   imageUrl?: string;
   rawImageUrl?: string;
   listingPrice?: number;
+  shippingAddress?: string;
 }
 
 
