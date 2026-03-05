@@ -67,15 +67,10 @@ export default function SignUpPage() {
                     <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px]" />
                 </div>
 
-                {/* Decorative holographic card visual (Placeholder) */}
-                <div className="relative z-10 w-80 h-[28rem] rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-sm shadow-2xl flex flex-col items-center justify-center group overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-                    <div className="w-24 h-24 mb-6 rounded-full border border-white/20 flex items-center justify-center">
-                        <span className="text-white/40 font-mono text-xs tracking-widest">TASH</span>
-                    </div>
-                    <p className="text-zinc-500 text-sm tracking-wide px-12 text-center">
-                        [Graphic placeholder for future asset]
-                    </p>
+                {/* Decorative holographic card visual (Placeholder for future asset) */}
+                <div className="relative z-10 w-80 h-[28rem] rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center justify-center group overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-700 z-20 pointer-events-none" />
+                    <img src="/mock_jordan.png" alt="Featured Card Asset" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                 </div>
             </div>
 

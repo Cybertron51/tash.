@@ -48,11 +48,14 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset.symbol]);
 
+  const lowestAsk = orderBook?.asks.length ? orderBook.asks[0].price : null;
+  const highestBid = orderBook?.bids.length ? orderBook.bids[0].price : null;
+
   const estPrice =
     orderType === "market"
       ? side === "buy"
-        ? asset.price * 1.001
-        : asset.price * 0.999
+        ? lowestAsk ?? asset.price
+        : highestBid ?? asset.price
       : limitPrice;
 
   const total = estPrice * quantity;

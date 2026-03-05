@@ -99,16 +99,16 @@ function TradeModal({
 }) {
   const { user, updateBalance } = useAuth();
 
-  const [bestBid, setBestBid] = useState(asset.price * 0.995);
-  const [bestAsk, setBestAsk] = useState(asset.price * 1.005);
+  const [bestBid, setBestBid] = useState(asset.price);
+  const [bestAsk, setBestAsk] = useState(asset.price);
 
   useEffect(() => {
     let isActive = true;
     import("@/lib/db/orders").then(({ fetchOrderBook }) => {
       fetchOrderBook(asset.symbol).then((book) => {
         if (!isActive) return;
-        setBestBid(book.bids[0]?.price ?? asset.price * 0.995);
-        setBestAsk(book.asks[book.asks.length - 1]?.price ?? asset.price * 1.005);
+        setBestBid(book.bids[0]?.price ?? asset.price);
+        setBestAsk(book.asks[0]?.price ?? asset.price);
       });
     });
     return () => { isActive = false; };
