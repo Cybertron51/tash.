@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
                         product_description: "Identity verification for secure payouts of collectible card sales on Tash.",
                     },
                     capabilities: {
+                        card_payments: { requested: true },
                         transfers: { requested: true },
                     },
                     metadata: {
