@@ -1149,9 +1149,9 @@ function ResultStage({
                         <XCircle size={14} /> Unacceptable Scan
                       </p>
                       <p style={{ fontSize: 12, color: colors.textPrimary, margin: "4px 0 0" }}>
-                        {(!result.isFullSlabVisible)
+                        {!result.isFullSlabVisible
                           ? "The entire PSA slab must be visible."
-                          : "Could not read or verify Barcode/Certification Number."}
+                          : "Certification number could not be verified. Please ensure the barcode is clear."}
                       </p>
                     </div>
                   )}

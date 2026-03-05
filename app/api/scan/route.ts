@@ -215,6 +215,8 @@ export async function POST(req: NextRequest) {
       const psaData = await fetchPSAMetadata(extractedCert);
 
       if (psaData) {
+        // If we found PSA data, the scan is definitely valid for our purposes
+        card.isFullSlabVisible = true;
         card.name = psaData.Subject || psaData.Player || card.name;
         card.set = psaData.CardSet || psaData.Brand || card.set;
         card.year = parseInt(psaData.Year) || card.year;
@@ -226,7 +228,9 @@ export async function POST(req: NextRequest) {
         if ((psaData.Subject || "").toLowerCase().includes("pokemon") || (psaData.CardSet || "").toLowerCase().includes("pokemon")) card.category = "pokemon";
         else if ((psaData.Brand || "").toLowerCase().includes("panini") || (psaData.Brand || "").toLowerCase().includes("topps")) card.category = "sports";
       } else {
-        card.isFullSlabVisible = false;
+        console.warn(`PSA lookup returned no data for cert ${extractedCert} — using AI metadata only`);
+        // We do NOT set isFullSlabVisible to false here.
+        // We keep the AI's initial determination (line 196) and metadata.
       }
     }
 
