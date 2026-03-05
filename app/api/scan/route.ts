@@ -58,7 +58,89 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Ask Gemini to identify the card
+    // Helper: build card object from PSA metadata
+    function buildCardFromPSA(psaData: any, certNumber: string): any {
+      const card: any = {
+        isFullSlabVisible: true,
+        certNumber,
+        name: psaData.Subject || psaData.Player || "Unknown Card",
+        set: psaData.CardSet || psaData.Brand || "Unknown Set",
+        year: parseInt(psaData.Year) || null,
+        cardNumber: psaData.CardNumber || null,
+        estimatedGrade: psaData.CardGrade
+          ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || 9
+          : 9,
+        category: "pokemon",
+      };
+
+      // Refine category from PSA data
+      const subject = (psaData.Subject || "").toLowerCase();
+      const cardSet = (psaData.CardSet || "").toLowerCase();
+      const brand = (psaData.Brand || "").toLowerCase();
+      if (subject.includes("pokemon") || cardSet.includes("pokemon")) card.category = "pokemon";
+      else if (brand.includes("panini") || brand.includes("topps")) card.category = "sports";
+      else card.category = "other";
+
+      return card;
+    }
+
+    // Helper: fetch PSA image and upload to Supabase
+    async function determineImageUrl(certNumber: string | null): Promise<string | null> {
+      if (!certNumber) return null;
+      console.log(`Attempting to fetch PSA image for cert ${certNumber}`);
+      const psaImageUrl = await fetchPSAImage(certNumber);
+      if (psaImageUrl) {
+        console.log(`Found PSA image, uploading to Supabase...`);
+        const supabaseUrl = await uploadCardImageToStorage(psaImageUrl, certNumber);
+        if (supabaseUrl) {
+          console.log(`Successfully uploaded PSA image: ${supabaseUrl}`);
+          return supabaseUrl;
+        }
+      }
+      return null;
+    }
+
+    // ─── FAST PATH: barcode cert number already available → skip Gemini ───
+    if (certNumberLocalScan) {
+      console.log(`Barcode cert number detected: ${certNumberLocalScan} — using PSA API directly (skipping Gemini)`);
+      const psaData = await fetchPSAMetadata(certNumberLocalScan);
+
+      if (psaData) {
+        const card = buildCardFromPSA(psaData, certNumberLocalScan);
+
+        // Fuzzy-match, image fetch, and raw scan upload in parallel
+        const [matchedAsset, imageUrl, rawImageUrl] = await Promise.all([
+          getMarketCards().then((dbCards) => {
+            const cardNameLower = (card.name ?? "").toLowerCase();
+            return (dbCards ?? []).find((a) => {
+              const assetName = a.name.toLowerCase();
+              const firstWord = assetName.split(" ")[0];
+              return (
+                assetName.includes(cardNameLower) ||
+                cardNameLower.includes(assetName) ||
+                (firstWord.length > 3 && cardNameLower.includes(firstWord))
+              );
+            }) ?? null;
+          }),
+          determineImageUrl(certNumberLocalScan),
+          uploadRawScanToStorage(imageBase64, mimeType),
+        ]);
+
+        return NextResponse.json({
+          card,
+          matchedSymbol: matchedAsset?.symbol ?? null,
+          imageUrl,
+          rawImageUrl,
+          pricing: null,
+        });
+      }
+
+      // PSA lookup failed for this cert number — fall through to Gemini
+      console.warn(`PSA lookup failed for cert ${certNumberLocalScan}, falling back to Gemini`);
+    }
+
+    // ─── SLOW PATH: no barcode → use Gemini AI to identify the card ───
+    console.log("No barcode cert number available — using Gemini AI to identify card");
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
     const result = await model.generateContent([
       { inlineData: { mimeType, data: imageBase64 } },
@@ -75,8 +157,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to parse AI response" }, { status: 422 });
     }
 
-    // Default card object — use AI-extracted name as starting point
-    const extractedCert = certNumberLocalScan || aiResult.certNumber || null;
+    // Build card from AI result
+    const extractedCert = aiResult.certNumber || null;
     const card: any = {
       isFullSlabVisible: !!aiResult.isFullSlabVisible,
       certNumber: extractedCert,
@@ -85,35 +167,45 @@ export async function POST(req: NextRequest) {
       year: aiResult.year || null,
       cardNumber: null,
       estimatedGrade: aiResult.psaGrade || null,
-      category: aiResult.category || "pokemon"
+      category: aiResult.category || "pokemon",
     };
 
-    // 2. Lookup actual data using PSA if Cert exists — overrides AI with authoritative data
+    // If Gemini couldn't find a cert number, flag the card
+    if (!extractedCert) {
+      console.warn("Gemini could not detect a barcode or cert number — flagging card");
+      card.isFullSlabVisible = false;
+    }
+
+    // If Gemini extracted a cert number, enrich with PSA data
     if (extractedCert) {
-      console.log(`Fetching exact PSA metadata for cert: ${extractedCert}`);
+      console.log(`Gemini extracted cert ${extractedCert} — enriching with PSA metadata`);
       const psaData = await fetchPSAMetadata(extractedCert);
 
       if (psaData) {
-        // Use PSA data when available, but fall back to AI-extracted values instead of "Unknown"
         card.name = psaData.Subject || psaData.Player || card.name;
         card.set = psaData.CardSet || psaData.Brand || card.set;
         card.year = parseInt(psaData.Year) || card.year;
         card.cardNumber = psaData.CardNumber || null;
-        card.estimatedGrade = psaData.CardGrade ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || card.estimatedGrade || 9 : card.estimatedGrade || 9;
+        card.estimatedGrade = psaData.CardGrade
+          ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || card.estimatedGrade || 9
+          : card.estimatedGrade || 9;
 
-        // Refine category from PSA data if available
         if ((psaData.Subject || "").toLowerCase().includes("pokemon") || (psaData.CardSet || "").toLowerCase().includes("pokemon")) card.category = "pokemon";
         else if ((psaData.Brand || "").toLowerCase().includes("panini") || (psaData.Brand || "").toLowerCase().includes("topps")) card.category = "sports";
       } else {
-        // We failed to get PSA data, essentially rendering the card un-scannable
-        card.isFullSlabVisible = false; // Overriding validation to fail it
+        card.isFullSlabVisible = false;
       }
     }
 
-    // Fuzzy-match card name to a known ASSET symbol for live pricing
+    // Fuzzy-match, image fetch, and raw scan upload in parallel
     const cardNameLower = (card.name ?? "").toLowerCase();
-    const dbCards = await getMarketCards() ?? [];
-    const matchedAsset = dbCards.find((a) => {
+    const [dbCards, imageUrl, rawImageUrl] = await Promise.all([
+      getMarketCards(),
+      determineImageUrl(card.certNumber),
+      uploadRawScanToStorage(imageBase64, mimeType),
+    ]);
+
+    const matchedAsset = (dbCards ?? []).find((a) => {
       const assetName = a.name.toLowerCase();
       const firstWord = assetName.split(" ")[0];
       return (
@@ -123,38 +215,12 @@ export async function POST(req: NextRequest) {
       );
     });
 
-    // Sub-routine to get the best image URL: 
-    // 1. Try PSA API and upload to Supabase if cert exists
-    // 2. Fall back to existing lookupCardImage logic
-    async function determineImageUrl(cardData: any): Promise<string | null> {
-      if (cardData.certNumber) {
-        console.log(`Attempting to fetch PSA image for cert ${cardData.certNumber}`);
-        const psaImageUrl = await fetchPSAImage(cardData.certNumber);
-        if (psaImageUrl) {
-          console.log(`Found PSA image, uploading to Supabase...`);
-          const supabaseUrl = await uploadCardImageToStorage(psaImageUrl, cardData.certNumber);
-          if (supabaseUrl) {
-            console.log(`Successfully uploaded PSA image: ${supabaseUrl}`);
-            return supabaseUrl;
-          }
-        }
-      }
-      return null;
-    }
-
-    // Look up image, pricing, and upload raw scan in parallel
-    const [imageUrl, pricing, rawImageUrl] = await Promise.all([
-      determineImageUrl(card),
-      Promise.resolve(null),
-      uploadRawScanToStorage(imageBase64, mimeType),
-    ]);
-
     return NextResponse.json({
       card,
       matchedSymbol: matchedAsset?.symbol ?? null,
       imageUrl,
       rawImageUrl,
-      pricing,
+      pricing: null,
     });
   } catch (error) {
     console.error("Scan API error:", error);
