@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
-    const allowedFields = ["name", "username", "favorite_tcgs", "primary_goal"];
+    const allowedFields = ["name", "username", "favorite_tcgs", "primary_goal", "onboarding_complete"];
     const payload: Record<string, unknown> = {};
 
     for (const field of allowedFields) {

@@ -21,7 +21,7 @@ export interface AssetData {
   volume24h: number;
   high24h: number;
   low24h: number;
-  category: "pokemon" | "sports";
+  category: "pokemon" | "sports" | "mtg" | "other";
   hasLiquidity?: boolean; // True if there are active listings for this card
   population: number;
   imageUrl?: string;
@@ -42,7 +42,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     volume24h: c.volume_24h,
     high24h: c.high_24h ?? c.price,
     low24h: c.low_24h ?? c.price,
-    category: c.category as "pokemon" | "sports",
+    category: c.category,
     hasLiquidity: false, // Will be populated by the frontend
     population: c.population,
     imageUrl: c.image_url_hi || c.image_url || undefined,

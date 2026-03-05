@@ -526,7 +526,7 @@ function MarketPageContent() {
             { label: "24H Low", value: formatCurrency(selected.low24h) },
             { label: "Volume", value: `${selected.volume24h} cop.` },
             { label: "Population", value: selected.population.toLocaleString() },
-            { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : "Sports" },
+            { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : selected.category === "sports" ? "Sports" : selected.category === "mtg" ? "Magic" : "Other" },
           ].map((stat, i) => (
             <div
               key={stat.label}

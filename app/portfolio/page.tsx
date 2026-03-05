@@ -766,7 +766,7 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
   const categoryValues: Record<string, number> = {};
   holdings.forEach((h) => {
     const asset = assets.find((a) => a.symbol === h.symbol);
-    const cat = asset?.category === "pokemon" ? "Pokémon" : "Sports";
+    const cat = asset?.category === "pokemon" ? "Pokémon" : asset?.category === "sports" ? "Sports" : asset?.category === "mtg" ? "Magic" : "Other";
     categoryValues[cat] = (categoryValues[cat] ?? 0) + (priceMap[h.symbol] ?? 0);
   });
   const categories = Object.entries(categoryValues).sort((a, b) => b[1] - a[1]);

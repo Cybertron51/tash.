@@ -200,7 +200,7 @@ export function Navigation() {
         }}
       >
         {/* ── Wordmark ─────────────────────────────── */}
-        <Link href="/" className="flex items-center gap-2 no-underline" aria-label="tash home">
+        <Link href="/market" className="flex items-center gap-2 no-underline" aria-label="tash home">
           <div
             className="flex items-center justify-center rounded-[8px]"
             style={{ width: 28, height: 28, backgroundColor: colors.green }}

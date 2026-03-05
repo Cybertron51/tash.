@@ -78,7 +78,8 @@ export async function POST(req: NextRequest) {
       const cardSet = (psaData.CardSet || "").toLowerCase();
       const brand = (psaData.Brand || "").toLowerCase();
       if (subject.includes("pokemon") || cardSet.includes("pokemon")) card.category = "pokemon";
-      else if (brand.includes("panini") || brand.includes("topps")) card.category = "sports";
+      else if (brand.includes("panini") || brand.includes("topps") || brand.includes("upper deck") || brand.includes("bowman")) card.category = "sports";
+      else if (subject.includes("magic") || cardSet.includes("magic") || cardSet.includes("mtg") || brand.includes("wizards")) card.category = "mtg";
       else card.category = "other";
 
       return card;
@@ -225,8 +226,14 @@ export async function POST(req: NextRequest) {
           ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || card.estimatedGrade || 9
           : card.estimatedGrade || 9;
 
-        if ((psaData.Subject || "").toLowerCase().includes("pokemon") || (psaData.CardSet || "").toLowerCase().includes("pokemon")) card.category = "pokemon";
-        else if ((psaData.Brand || "").toLowerCase().includes("panini") || (psaData.Brand || "").toLowerCase().includes("topps")) card.category = "sports";
+        const sub = (psaData.Subject || "").toLowerCase();
+        const set = (psaData.CardSet || "").toLowerCase();
+        const bnd = (psaData.Brand || "").toLowerCase();
+
+        if (sub.includes("pokemon") || set.includes("pokemon")) card.category = "pokemon";
+        else if (bnd.includes("panini") || bnd.includes("topps") || bnd.includes("upper deck") || bnd.includes("bowman")) card.category = "sports";
+        else if (sub.includes("magic") || set.includes("magic") || set.includes("mtg") || bnd.includes("wizards")) card.category = "mtg";
+        else card.category = "other";
       } else {
         console.warn(`PSA lookup returned no data for cert ${extractedCert} — using AI metadata only`);
         // We do NOT set isFullSlabVisible to false here.

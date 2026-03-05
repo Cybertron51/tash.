@@ -26,9 +26,18 @@ export default function OnboardingPage() {
     }, [searchParams]);
 
     // Form State
-    const [username, setUsername] = useState("");
-    const [favoriteTcgs, setFavoriteTcgs] = useState<string[]>([]);
-    const [primaryGoals, setPrimaryGoals] = useState<string[]>([]);
+    const [username, setUsername] = useState(user?.username || "");
+    const [favoriteTcgs, setFavoriteTcgs] = useState<string[]>(user?.favoriteTcgs || []);
+    const [primaryGoals, setPrimaryGoals] = useState<string[]>(user?.primaryGoal || []);
+
+    // Sync form state when user profile loads
+    useEffect(() => {
+        if (user) {
+            if (user.username && !username) setUsername(user.username);
+            if (user.favoriteTcgs?.length > 0 && favoriteTcgs.length === 0) setFavoriteTcgs(user.favoriteTcgs);
+            if (user.primaryGoal?.length > 0 && primaryGoals.length === 0) setPrimaryGoals(user.primaryGoal);
+        }
+    }, [user]);
 
     // UI State
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,6 +168,7 @@ export default function OnboardingPage() {
                 username,
                 favorite_tcgs: favoriteTcgs,
                 primary_goal: primaryGoals,
+                onboarding_complete: true,
             });
 
             // Success - redirect to dashboard/portfolio
@@ -479,6 +489,12 @@ export default function OnboardingPage() {
                                                     returnTo: searchParams.get("returnTo")
                                                 }),
                                             });
+
+                                            // Also update profile to mark as complete if they clicked this
+                                            await apiPatch("/api/user/profile", {
+                                                onboarding_complete: true
+                                            });
+
                                             const data = await res.json();
                                             if (data.url) {
                                                 window.location.href = data.url;
