@@ -13,6 +13,7 @@ import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors } from "@/lib/theme";
 import { tickPrice, type AssetData } from "@/lib/market-data";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 // ─────────────────────────────────────────────────────────
 // Sub-component: single ticker chip
@@ -153,6 +154,7 @@ export function GlobalTicker({ items }: GlobalTickerProps) {
     };
   }, []);
 
+  const isMobile = useIsMobile();
   const doubled = [...liveItems, ...liveItems];
 
   return (
@@ -161,7 +163,7 @@ export function GlobalTicker({ items }: GlobalTickerProps) {
       aria-label="Live card market prices"
       className="relative w-full overflow-hidden border-b"
       style={{
-        height: "var(--ticker-height, 36px)",
+        height: isMobile ? "32px" : "40px",
         backgroundColor: colors.surface,
         borderColor: colors.border,
         zIndex: 110,

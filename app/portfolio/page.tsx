@@ -24,6 +24,8 @@ import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { colors, layout, psaGradeColor, zIndex } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
+import { ArrowLeft } from "lucide-react";
 
 
 // ─────────────────────────────────────────────────────────
@@ -74,6 +76,9 @@ export default function PortfolioPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activities, setActivities] = useState<Activity[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const isMobile = useIsMobile();
+  const [showDetailOnMobile, setShowDetailOnMobile] = useState(false);
 
   // Load market metadata
   useEffect(() => {
@@ -400,15 +405,21 @@ export default function PortfolioPage() {
 
   return (
     <div
-      className="flex"
-      style={{ height: `calc(100dvh - ${layout.chromeHeight})`, overflow: "hidden" }}
+      className="flex flex-col md:flex-row"
+      style={{
+        height: isMobile ? `calc(100dvh - ${layout.chromeHeight} - 64px)` : `calc(100dvh - ${layout.chromeHeight})`,
+        overflow: "hidden"
+      }}
     >
       {/* ══════════════════════════════════════════════════
           LEFT — Holdings list
       ══════════════════════════════════════════════════ */}
       <aside
-        className="flex flex-col border-r"
-        style={{ width: 280, minWidth: 280, borderColor: colors.border, background: colors.background }}
+        className={cn(
+          "flex flex-col border-r",
+          isMobile && showDetailOnMobile ? "hidden" : "flex w-full md:w-[280px]"
+        )}
+        style={{ minWidth: isMobile ? "100%" : 280, borderColor: colors.border, background: colors.background }}
       >
         {/* Header */}
         <div
@@ -513,7 +524,10 @@ export default function PortfolioPage() {
 
           {/* "All" / overview row */}
           <button
-            onClick={() => setSelectedId(null)}
+            onClick={() => {
+              setSelectedId(null);
+              if (isMobile) setShowDetailOnMobile(true);
+            }}
             className="w-full border-b text-left transition-colors duration-100 hover:bg-[#0f0f0f]"
             style={{
               borderColor: colors.borderSubtle,
@@ -546,7 +560,10 @@ export default function PortfolioPage() {
             return (
               <button
                 key={holding.id}
-                onClick={() => setSelectedId(holding.id)}
+                onClick={() => {
+                  setSelectedId(holding.id);
+                  if (isMobile) setShowDetailOnMobile(true);
+                }}
                 className="w-full border-b text-left transition-colors duration-100 hover:bg-[#0f0f0f]"
                 style={{
                   borderColor: colors.borderSubtle,
@@ -619,7 +636,25 @@ export default function PortfolioPage() {
       {/* ══════════════════════════════════════════════════
           RIGHT — Portfolio overview OR card detail
       ══════════════════════════════════════════════════ */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto" style={{ background: colors.background }}>
+      <main
+        className={cn(
+          "flex min-w-0 flex-1 flex-col overflow-y-auto",
+          isMobile && !showDetailOnMobile ? "hidden" : "flex"
+        )}
+        style={{ background: colors.background }}
+      >
+        {isMobile && showDetailOnMobile && (
+          <div className="flex items-center gap-2 p-4 border-b shrink-0" style={{ borderColor: colors.borderSubtle }}>
+            <button
+              onClick={() => setShowDetailOnMobile(false)}
+              className="flex items-center gap-2 text-[13px] font-bold"
+              style={{ color: colors.green }}
+            >
+              <ArrowLeft size={16} />
+              <span>Back to Portfolio</span>
+            </button>
+          </div>
+        )}
         {selected === null ? (
           <PortfolioOverview
             holdings={holdings}

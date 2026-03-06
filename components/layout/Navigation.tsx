@@ -11,12 +11,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart2, TrendingUp, Search, Bell, ChevronDown, Camera } from "lucide-react";
+import { BarChart2, TrendingUp, Search, Bell, ChevronDown, Camera, User } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { CommandMenu } from "@/components/layout/CommandMenu";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 // ─────────────────────────────────────────────────────────
 // Nav links
@@ -186,11 +187,12 @@ export function Navigation() {
   const { isAuthenticated } = useAuth();
   const [showSignIn, setShowSignIn] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const isMobile = useIsMobile();
 
   return (
     <>
       <header
-        className="sticky flex w-full items-center justify-between border-b px-6"
+        className="sticky flex w-full items-center justify-between border-b px-4 md:px-6"
         style={{
           top: layout.tickerHeight,
           height: layout.navHeight,
@@ -217,71 +219,82 @@ export function Navigation() {
           </span>
         </Link>
 
-        {/* ── Primary Nav ──────────────────────────── */}
-        <nav className="flex items-center gap-1" aria-label="Primary navigation">
-          {NAV_LINKS.map(({ href, label, icon }) => {
-            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
-                  "text-[13px] font-medium transition-all duration-150",
-                  "hover:bg-[#1E1E1E]"
-                )}
-                style={{
-                  color: isActive ? colors.textPrimary : colors.textSecondary,
-                  backgroundColor: isActive ? colors.surface : "transparent",
-                }}
-                aria-current={isActive ? "page" : undefined}
-              >
-                {icon}
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* ── Primary Nav (Desktop) ─────────────────── */}
+        {!isMobile && (
+          <nav className="flex items-center gap-1" aria-label="Primary navigation">
+            {NAV_LINKS.map(({ href, label, icon }) => {
+              const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={cn(
+                    "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
+                    "text-[13px] font-medium transition-all duration-150",
+                    "hover:bg-[#1E1E1E]"
+                  )}
+                  style={{
+                    color: isActive ? colors.textPrimary : colors.textSecondary,
+                    backgroundColor: isActive ? colors.surface : "transparent",
+                  }}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {icon}
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
 
         {/* ── Right Controls ───────────────────────── */}
         <div className="flex items-center gap-2">
-          {/* Upload Link */}
-          <Link
-            href="/scan"
-            className={cn(
-              "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
-              "text-[13px] font-bold transition-all duration-150 active:scale-[0.98]",
-              "hover:bg-[#1E1E1E]"
-            )}
-            style={{
-              color: pathname.startsWith("/scan") ? colors.textPrimary : colors.textSecondary,
-              backgroundColor: pathname.startsWith("/scan") ? colors.surface : "transparent",
-              border: `1px solid ${colors.border}`,
-            }}
-          >
-            <Camera size={15} strokeWidth={2} />
-            <span>Upload</span>
-          </Link>
+          {/* Upload Link (Desktop) */}
+          {!isMobile && (
+            <Link
+              href="/scan"
+              className={cn(
+                "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
+                "text-[13px] font-bold transition-all duration-150 active:scale-[0.98]",
+                "hover:bg-[#1E1E1E]"
+              )}
+              style={{
+                color: pathname.startsWith("/scan") ? colors.textPrimary : colors.textSecondary,
+                backgroundColor: pathname.startsWith("/scan") ? colors.surface : "transparent",
+                border: `1px solid ${colors.border}`,
+              }}
+            >
+              <Camera size={15} strokeWidth={2} />
+              <span>Upload</span>
+            </Link>
+          )}
 
           {/* Search */}
           <button
             onClick={() => setShowSearch(true)}
-            className="flex items-center gap-2 rounded-[10px] border px-3 py-[7px] text-[13px] transition-colors duration-150 hover:border-[#3E3E3E]"
+            className={cn(
+              "flex items-center gap-2 rounded-[10px] border px-3 py-[7px] transition-colors duration-150 hover:border-[#3E3E3E]",
+              isMobile ? "border-none p-2" : "text-[13px]"
+            )}
             style={{ color: colors.textMuted, borderColor: colors.border }}
             aria-label="Search cards"
           >
-            <Search size={14} strokeWidth={2} />
-            <span>Search cards…</span>
-            <kbd
-              className="rounded-[4px] px-[5px] py-[1px] text-[10px] font-medium"
-              style={{ backgroundColor: colors.surfaceOverlay, color: colors.textMuted }}
-            >
-              ⌘K
-            </kbd>
+            <Search size={isMobile ? 20 : 14} strokeWidth={2} />
+            {!isMobile && (
+              <>
+                <span>Search cards…</span>
+                <kbd
+                  className="rounded-[4px] px-[5px] py-[1px] text-[10px] font-medium"
+                  style={{ backgroundColor: colors.surfaceOverlay, color: colors.textMuted }}
+                >
+                  ⌘K
+                </kbd>
+              </>
+            )}
           </button>
 
-          {/* Notifications — only shown when signed in */}
-          {isAuthenticated && (
+          {/* Notifications ─────────────────────────── */}
+          {isAuthenticated && !isMobile && (
             <button
               className="flex h-8 w-8 items-center justify-center rounded-[10px] transition-colors hover:bg-[#1E1E1E]"
               style={{ color: colors.textSecondary }}
@@ -291,33 +304,91 @@ export function Navigation() {
             </button>
           )}
 
-          {/* Auth control */}
+          {/* Auth control ──────────────────────────── */}
           {isAuthenticated ? (
-            <AccountChip />
+            isMobile ? (
+              <Link href="/account" className="flex items-center justify-center rounded-full p-1" style={{ background: colors.greenMuted }}>
+                <User size={20} style={{ color: colors.green }} />
+              </Link>
+            ) : (
+              <AccountChip />
+            )
           ) : (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowSignIn(true)}
-                className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150"
+                className="rounded-[10px] px-3 md:px-4 py-[7px] text-[13px] font-semibold transition-all duration-150"
                 style={{ color: colors.textPrimary }}
               >
                 Sign In
               </button>
-              <button
-                onClick={() => router.push("/sign-up")}
-                className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
-                style={{ background: colors.green, color: colors.textInverse }}
-              >
-                Sign Up
-              </button>
+              {!isMobile && (
+                <button
+                  onClick={() => router.push("/sign-up")}
+                  className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
+                  style={{ background: colors.green, color: colors.textInverse }}
+                >
+                  Sign Up
+                </button>
+              )}
             </div>
           )}
         </div>
       </header>
+
+      {/* ── Bottom Navigation (Mobile) ───────────── */}
+      {isMobile && (
+        <nav
+          className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t px-2 pb-safe-area-inset-bottom"
+          style={{
+            height: "64px",
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+            zIndex: 100,
+          }}
+        >
+          {/* Market */}
+          <Link
+            href="/market"
+            className="flex flex-col items-center gap-1 p-2"
+            style={{ color: pathname.startsWith("/market") ? colors.green : colors.textSecondary }}
+          >
+            <TrendingUp size={20} strokeWidth={pathname.startsWith("/market") ? 2.5 : 2} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Market</span>
+          </Link>
+
+          {/* Scan / Upload */}
+          <Link
+            href="/scan"
+            className="flex -translate-y-4 flex-col items-center justify-center rounded-full border-4 shadow-lg active:scale-95"
+            style={{
+              width: 56,
+              height: 56,
+              backgroundColor: colors.green,
+              borderColor: colors.background,
+              color: colors.textInverse,
+            }}
+          >
+            <Camera size={24} strokeWidth={2.5} />
+          </Link>
+
+          {/* Portfolio */}
+          <Link
+            href="/portfolio"
+            className="flex flex-col items-center gap-1 p-2"
+            style={{ color: pathname.startsWith("/portfolio") ? colors.green : colors.textSecondary }}
+          >
+            <BarChart2 size={20} strokeWidth={pathname.startsWith("/portfolio") ? 2.5 : 2} />
+            <span className="text-[10px] font-bold uppercase tracking-wider">Portfolio</span>
+          </Link>
+        </nav>
+      )}
+
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
       <CommandMenu open={showSearch} setOpen={setShowSearch} />
     </>
   );
 }
+
 
 export default Navigation;
