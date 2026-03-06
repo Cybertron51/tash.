@@ -18,8 +18,13 @@ export async function POST(request: Request) {
         }
 
         if (authHeader !== `Bearer ${webhookSecret}`) {
+            console.error("WEBHOOK AUTHENTICATION FAILED");
+            console.error(`Expected: Bearer ${webhookSecret}`);
+            console.error(`Received: ${authHeader}`);
+            console.error("Please check the Supabase Webhook HTTP Headers configuration.");
+
             return NextResponse.json(
-                { error: "Unauthorized" },
+                { error: "Unauthorized", details: "Check Vercel Server Logs for token mismatch details." },
                 { status: 401 }
             );
         }
