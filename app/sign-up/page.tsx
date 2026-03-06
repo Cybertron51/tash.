@@ -15,14 +15,17 @@ export default function SignUpPage() {
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
-    const [successMsg, setSuccessMsg] = useState("");
     const [showSignIn, setShowSignIn] = useState(false);
 
     // If user is already logged in, redirect them to onboarding
     // (Onboarding will redirect them to portfolio if fully onboarded)
     useEffect(() => {
         if (user) {
-            router.push("/onboarding");
+            if (user.onboardingComplete) {
+                router.push("/portfolio");
+            } else {
+                router.push("/onboarding");
+            }
         }
     }, [user, router]);
 
@@ -31,22 +34,16 @@ export default function SignUpPage() {
         if (!supabase) return;
         setLoading(true);
         setErrorMsg("");
-        setSuccessMsg("");
 
         try {
-            const { data, error } = await supabase.auth.signUp({
+            const { error } = await supabase.auth.signUp({
                 email,
                 password,
                 options: { data: { name: email.split("@")[0] } },
             });
             if (error) throw error;
-
-            if (data?.user && !data.session) {
-                setSuccessMsg("Check your email for a verification link to activate your account.");
-            } else {
-                router.push("/onboarding");
-                router.refresh();
-            }
+            router.push("/onboarding");
+            router.refresh();
         } catch (err: any) {
             setErrorMsg(err.message || "Failed to create account.");
         } finally {
@@ -102,19 +99,6 @@ export default function SignUpPage() {
                                 }}
                             >
                                 {errorMsg}
-                            </div>
-                        )}
-
-                        {successMsg && (
-                            <div
-                                className="rounded-[8px] p-3 text-[13px] font-medium"
-                                style={{
-                                    background: "rgba(34, 197, 94, 0.1)",
-                                    color: colors.green,
-                                    border: `1px solid rgba(34, 197, 129, 0.2)`,
-                                }}
-                            >
-                                {successMsg}
                             </div>
                         )}
 

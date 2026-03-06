@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/lib/theme";
 
 export default function AuthCallbackPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -42,15 +43,14 @@ export default function AuthCallbackPage() {
                     throw profileError;
                 }
 
-                // Check if they have finished the required onboarding steps
-                const isFullyOnboarded =
+                // Check if they have finished the required identity steps
+                if (
                     profile?.username &&
                     profile?.favorite_tcgs?.length > 0 &&
-                    profile?.primary_goal &&
-                    profile?.onboarding_complete;
-
-                if (isFullyOnboarded) {
-                    router.push("/portfolio");
+                    (Array.isArray(profile?.primary_goal) ? profile.primary_goal.length > 0 : !!profile?.primary_goal)
+                ) {
+                    const returnTo = searchParams.get("returnTo");
+                    router.push(returnTo || "/portfolio");
                 } else {
                     router.push("/onboarding");
                 }

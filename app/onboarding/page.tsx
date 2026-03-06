@@ -100,8 +100,7 @@ export default function OnboardingPage() {
         if (
             user?.username &&
             user?.favoriteTcgs?.length > 0 &&
-            (user?.primaryGoal?.length ?? 0) > 0 &&
-            user?.onboardingComplete
+            (Array.isArray(user?.primaryGoal) ? user.primaryGoal.length > 0 : !!user.primaryGoal)
         ) {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
