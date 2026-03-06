@@ -39,8 +39,9 @@ export default function WithdrawPage() {
     const { user, updateBalance, session, refreshProfile } = useAuth();
 
     // Auto-refresh profile if onboarding looks incomplete
+    // Require valid profile & stripe setup
     useEffect(() => {
-        if (user && !user.onboardingComplete && user.stripeAccountId) {
+        if (user && !user.stripeOnboardingComplete && user.stripeAccountId) {
             refreshProfile();
         }
     }, [user, refreshProfile]);

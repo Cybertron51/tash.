@@ -306,7 +306,7 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
   return (
     <div className="flex flex-col gap-3 p-3">
       {/* Available balance */}
-      {isAuthenticated && user && user.onboardingComplete && (
+      {isAuthenticated && user && user.stripeOnboardingComplete && (
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
             Available

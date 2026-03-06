@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (cash_balance >= 0),
   locked_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (locked_balance >= 0),
   stripe_account_id TEXT,
-  onboarding_complete BOOLEAN DEFAULT FALSE,
+  stripe_onboarding_complete BOOLEAN DEFAULT FALSE,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );

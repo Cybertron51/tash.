@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { error: updateErr } = await supabaseAdmin
             .from("profiles")
-            .update({ onboarding_complete: isFullyVerified })
+            .update({ stripe_onboarding_complete: isFullyVerified })
             .eq("id", userId);
 
           if (updateErr) {

@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth";
 export default function OnboardingPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { session, user } = useAuth();
+    const { session, user, isProfileComplete } = useAuth();
 
     // Initialize step from URL if present
     const stepParam = searchParams.get("step");
@@ -97,15 +97,11 @@ export default function OnboardingPage() {
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
-        if (
-            user?.username &&
-            user?.favoriteTcgs?.length > 0 &&
-            (Array.isArray(user?.primaryGoal) ? user.primaryGoal.length > 0 : !!user.primaryGoal)
-        ) {
+        if (isProfileComplete) {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
         }
-    }, [user, router, searchParams]);
+    }, [isProfileComplete, router, searchParams]);
 
     // Require session, redirect otherwise after short delay
     useEffect(() => {
@@ -167,7 +163,6 @@ export default function OnboardingPage() {
                 username,
                 favorite_tcgs: favoriteTcgs,
                 primary_goal: primaryGoals,
-                onboarding_complete: true,
             });
 
             // Success - redirect to dashboard/portfolio
@@ -487,11 +482,6 @@ export default function OnboardingPage() {
                                                     email: user.email,
                                                     returnTo: searchParams.get("returnTo")
                                                 }),
-                                            });
-
-                                            // Also update profile to mark as complete if they clicked this
-                                            await apiPatch("/api/user/profile", {
-                                                onboarding_complete: true
                                             });
 
                                             const data = await res.json();

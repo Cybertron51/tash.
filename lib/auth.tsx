@@ -28,7 +28,7 @@ export interface User {
   walletAddress: string;
   memberSince: string;
   stripeAccountId: string | null;
-  onboardingComplete: boolean;
+  stripeOnboardingComplete: boolean;
 }
 
 interface AuthContextValue {
@@ -39,6 +39,7 @@ interface AuthContextValue {
   signOut: () => void;
   updateBalance: (delta: number) => void;
   refreshProfile: () => Promise<void>;
+  isProfileComplete: boolean;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         walletAddress: "0x0000000000000000000000000000000000000000",
         memberSince: year,
         stripeAccountId: data.stripe_account_id || null,
-        onboardingComplete: !!data.onboarding_complete,
+        stripeOnboardingComplete: !!data.stripe_onboarding_complete,
       });
     } catch (err) {
       console.error("Failed to fetch user profile", err);
@@ -156,10 +157,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [fetchProfile]);
 
+  const isProfileComplete = useMemo(() => {
+    if (!user) return false;
+    return !!(
+      user.username &&
+      user.favoriteTcgs?.length > 0 &&
+      (Array.isArray(user.primaryGoal) ? user.primaryGoal.length > 0 : !!user.primaryGoal)
+    );
+  }, [user]);
+
   // Memoize context value to prevent unnecessary consumer re-renders
   const value = useMemo<AuthContextValue>(() => ({
-    user, session, isAuthenticated: !!user, signIn, signOut, updateBalance, refreshProfile
-  }), [user, session, signIn, signOut, updateBalance, refreshProfile]);
+    user, session, isAuthenticated: !!user, signIn, signOut, updateBalance, refreshProfile, isProfileComplete
+  }), [user, session, signIn, signOut, updateBalance, refreshProfile, isProfileComplete]);
 
   return (
     <AuthContext.Provider value={value}>

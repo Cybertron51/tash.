@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
         // 1. Get the user's stripe_account_id
         const { data: profile, error: profileError } = await supabaseAdmin
             .from("profiles")
-            .select("stripe_account_id, onboarding_complete")
+            .select("stripe_account_id, stripe_onboarding_complete")
             .eq("id", auth.userId)
             .single();
 
@@ -38,28 +38,28 @@ export async function POST(req: NextRequest) {
         const isFullyVerified = !!(account.details_submitted && account.payouts_enabled && account.charges_enabled);
 
         // 5. Update DB if status has changed
-        if (isFullyVerified && !profile.onboarding_complete) {
+        if (isFullyVerified && !profile.stripe_onboarding_complete) {
             await supabaseAdmin
                 .from("profiles")
-                .update({ onboarding_complete: true })
+                .update({ stripe_onboarding_complete: true })
                 .eq("id", auth.userId);
 
             return NextResponse.json({
                 synced: true,
-                onboardingComplete: true,
+                stripeOnboardingComplete: true,
                 message: "Profile verified! You are ready to trade."
             });
-        } else if (!isFullyVerified && profile.onboarding_complete) {
+        } else if (!isFullyVerified && profile.stripe_onboarding_complete) {
             // Revert if Stripe status changed (e.g. restriction added)
             await supabaseAdmin
                 .from("profiles")
-                .update({ onboarding_complete: false })
+                .update({ stripe_onboarding_complete: false })
                 .eq("id", auth.userId);
         }
 
         return NextResponse.json({
             synced: true,
-            onboardingComplete: isFullyVerified,
+            stripeOnboardingComplete: isFullyVerified,
             message: isFullyVerified ? "All synced." : "Stripe verification still in progress or restricted.",
             details: {
                 detailsSubmitted: account.details_submitted,

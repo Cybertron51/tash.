@@ -74,7 +74,7 @@ async function handleCashWithdrawal(userId: string, body: any) {
   // Fetch profile
   const { data: profile, error: profileErr } = await supabaseAdmin!
     .from("profiles")
-    .select("cash_balance, stripe_account_id, onboarding_complete")
+    .select("cash_balance, stripe_account_id, stripe_onboarding_complete")
     .eq("id", userId)
     .single();
 
@@ -83,7 +83,7 @@ async function handleCashWithdrawal(userId: string, body: any) {
   }
 
   // Validate Connect status
-  if (!profile.stripe_account_id || !profile.onboarding_complete) {
+  if (!profile.stripe_account_id || !profile.stripe_onboarding_complete) {
     return NextResponse.json(
       { error: "Please complete your Stripe Connect setup before withdrawing." },
       { status: 403 }

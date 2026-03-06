@@ -26,7 +26,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
     if (!isAuthenticated) return null;
 
     // 2. Verified? Show the protected content
-    if (user?.onboardingComplete) {
+    if (user?.stripeOnboardingComplete) {
         return <>{children}</>;
     }
 

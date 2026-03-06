@@ -34,7 +34,7 @@ export default function AuthCallbackPage() {
                 // Fetch the user's profile to check onboarding status
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
-                    .select('username, favorite_tcgs, primary_goal, onboarding_complete')
+                    .select('username, favorite_tcgs, primary_goal, stripe_onboarding_complete')
                     .eq('id', session.user.id)
                     .single();
 
@@ -44,13 +44,13 @@ export default function AuthCallbackPage() {
                 }
 
                 // Check if they have finished the required identity steps
-                if (
+                const isIdentified =
                     profile?.username &&
                     profile?.favorite_tcgs?.length > 0 &&
-                    (Array.isArray(profile?.primary_goal) ? profile.primary_goal.length > 0 : !!profile?.primary_goal)
-                ) {
-                    const returnTo = searchParams.get("returnTo");
-                    router.push(returnTo || "/portfolio");
+                    (Array.isArray(profile?.primary_goal) ? profile.primary_goal.length > 0 : !!profile?.primary_goal);
+
+                if (isIdentified) {
+                    router.push("/portfolio");
                 } else {
                     router.push("/onboarding");
                 }

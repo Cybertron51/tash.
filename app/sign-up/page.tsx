@@ -10,7 +10,7 @@ import { SignInModal } from "@/components/auth/SignInModal";
 
 export default function SignUpPage() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, isProfileComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
@@ -21,13 +21,13 @@ export default function SignUpPage() {
     // (Onboarding will redirect them to portfolio if fully onboarded)
     useEffect(() => {
         if (user) {
-            if (user.onboardingComplete) {
+            if (isProfileComplete) {
                 router.push("/portfolio");
             } else {
                 router.push("/onboarding");
             }
         }
-    }, [user, router]);
+    }, [user, isProfileComplete, router]);
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
