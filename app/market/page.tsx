@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2 } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2, Filter } from "lucide-react";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { SimpleView } from "@/components/market/SimpleView";
 import {
@@ -82,6 +82,7 @@ function MarketPageContent() {
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
   const [showSignIn, setShowSignIn] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("simple");
+  const [showNonTradable, setShowNonTradable] = useState(false);
   const [dashboardTab, setDashboardTab] = useState<"image" | "chart">("image");
   const [activeMarketImageIndex, setActiveMarketImageIndex] = useState(0);
   const { holdings } = usePortfolio();
@@ -97,7 +98,11 @@ function MarketPageContent() {
     localStorage.setItem("tash-view-mode", m);
   }
 
-  const selected = assets.find((a) => a.symbol === selectedSymbol) ?? assets[0] ?? null;
+  const visibleAssets = useMemo(() => {
+    return showNonTradable ? assets : assets.filter(a => a.hasLiquidity);
+  }, [assets, showNonTradable]);
+
+  const selected = visibleAssets.find((a) => a.symbol === selectedSymbol) ?? visibleAssets[0] ?? null;
   const isUp = selected ? selected.change >= 0 : false;
 
   // ── Initial load from Supabase ─────────────────────────
@@ -121,9 +126,12 @@ function MarketPageContent() {
         });
         setAssets(newAssets);
         const urlSymbol = searchParams?.get("symbol");
+        const initialVisible = newAssets.filter(a => a.hasLiquidity);
+        const initialLookup = initialVisible.length > 0 ? initialVisible : newAssets;
+
         setSelectedSymbol((prev) => {
-          if (urlSymbol && newAssets.some(a => a.symbol === urlSymbol)) return urlSymbol;
-          return newAssets.some(a => a.symbol === prev) ? prev : newAssets[0].symbol;
+          if (urlSymbol && initialLookup.some(a => a.symbol === urlSymbol)) return urlSymbol;
+          return initialLookup.some(a => a.symbol === prev) ? prev : initialLookup[0].symbol;
         });
       }
       setIsLoading(false);
@@ -299,10 +307,12 @@ function MarketPageContent() {
         </div>
 
         <SimpleView
-          assets={assets}
+          assets={visibleAssets}
           sparklines={sparklines}
           flashMap={flashMap}
           onRequestSignIn={() => setShowSignIn(true)}
+          showNonTradable={showNonTradable}
+          onToggleShowNonTradable={() => setShowNonTradable(!showNonTradable)}
         />
 
         {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
@@ -325,16 +335,33 @@ function MarketPageContent() {
         style={{ width: 240, minWidth: 240, borderColor: colors.border, background: colors.background }}
       >
         <div
-          className="sticky top-0 z-[1] flex items-center gap-[6px] border-b px-4 py-[10px]"
+          className="sticky top-0 z-[1] flex items-center justify-between border-b px-4 py-[10px]"
           style={{ background: colors.background, borderColor: colors.border }}
         >
-          <Zap size={11} strokeWidth={2.5} style={{ color: colors.green }} />
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.green }}>
-            Live Market
-          </span>
+          <div className="flex items-center gap-[6px]">
+            <Zap size={11} strokeWidth={2.5} style={{ color: colors.green }} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.green }}>
+              Live Market
+            </span>
+          </div>
+          <label
+            className="flex items-center gap-[6px] cursor-pointer"
+            title={showNonTradable ? "Hide non-tradable" : "Show non-tradable"}
+          >
+            <input
+              type="checkbox"
+              checked={showNonTradable}
+              onChange={() => setShowNonTradable(!showNonTradable)}
+              className="w-3 h-3 rounded-[3px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
+              style={{ border: `1px solid ${colors.borderSubtle}` }}
+            />
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+              Show all
+            </span>
+          </label>
         </div>
 
-        {assets.map((asset) => {
+        {visibleAssets.map((asset) => {
           const assetUp = asset.change >= 0;
           const isSel = asset.symbol === selectedSymbol;
           const flash = flashMap[asset.symbol];

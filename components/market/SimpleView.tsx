@@ -11,7 +11,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { Search, ChevronRight, CheckCircle, Loader2, Lock, X } from "lucide-react";
+import { Search, ChevronRight, CheckCircle, Loader2, Lock, X, Filter } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -31,6 +31,8 @@ export interface SimpleViewProps {
   sparklines: Record<string, PricePoint[]>;
   flashMap: Record<string, "up" | "down">;
   onRequestSignIn: () => void;
+  showNonTradable: boolean;
+  onToggleShowNonTradable: () => void;
 }
 
 type TradeSide = "buy" | "sell";
@@ -618,7 +620,7 @@ function MarketRow({
 // SimpleView
 // ─────────────────────────────────────────────────────────
 
-export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn }: SimpleViewProps) {
+export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, showNonTradable, onToggleShowNonTradable }: SimpleViewProps) {
   const { user, isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
   const [tradeModal, setTradeModal] = useState<{
@@ -745,9 +747,26 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn }: Si
       {/* ── Market ────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between px-5 pb-2">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: colors.textMuted }}>
-            {query ? `Results for "${query}"` : "Market"}
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: colors.textMuted }}>
+              {query ? `Results for "${query}"` : "Market"}
+            </h2>
+            <label
+              className="flex items-center gap-[6px] cursor-pointer mt-[1px]"
+              title={showNonTradable ? "Hide non-tradable" : "Show non-tradable"}
+            >
+              <input
+                type="checkbox"
+                checked={showNonTradable}
+                onChange={onToggleShowNonTradable}
+                className="w-3 h-3 rounded-[3px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
+                style={{ border: `1px solid ${colors.borderSubtle}` }}
+              />
+              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                Show all
+              </span>
+            </label>
+          </div>
           <span className="text-[11px]" style={{ color: colors.textMuted }}>
             {marketAssets.length} cards
           </span>

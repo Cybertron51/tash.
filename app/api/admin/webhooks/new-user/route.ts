@@ -6,7 +6,10 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 export async function POST(request: Request) {
     try {
         // 1. Verify the webhook secret
+        const { searchParams } = new URL(request.url);
+        const queryToken = searchParams.get("token");
         const authHeader = request.headers.get("Authorization");
+        const customHeader = request.headers.get("x-webhook-secret");
         const webhookSecret = process.env.WEBHOOK_SECRET;
 
         if (!webhookSecret) {
@@ -17,11 +20,17 @@ export async function POST(request: Request) {
             );
         }
 
-        if (authHeader !== `Bearer ${webhookSecret}`) {
+        const isHeaderValid = authHeader === `Bearer ${webhookSecret}`;
+        const isQueryValid = queryToken === webhookSecret;
+        const isCustomValid = customHeader === webhookSecret;
+
+        if (!isHeaderValid && !isQueryValid && !isCustomValid) {
             console.error("WEBHOOK AUTHENTICATION FAILED");
             console.error(`Expected: Bearer ${webhookSecret}`);
-            console.error(`Received: ${authHeader}`);
-            console.error("Please check the Supabase Webhook HTTP Headers configuration.");
+            console.error(`Received Authorization: ${authHeader}`);
+            console.error(`Received Custom Header: ${customHeader}`);
+            console.error(`Received Query Token: ${queryToken}`);
+            console.error("Please check the Supabase Webhook configuration (Custom Header, Bearer, or URL token).");
 
             return NextResponse.json(
                 { error: "Unauthorized", details: "Check Vercel Server Logs for token mismatch details." },
