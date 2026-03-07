@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Shield, LogOut, ChevronRight, Bell, CreditCard, Wallet, Key } from "lucide-react";
+import { User, Mail, Shield, LogOut, ChevronRight, Bell, CreditCard, Wallet, Key, Trash2, AlertTriangle, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
@@ -11,15 +11,40 @@ import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 
 export default function AccountPage() {
-  const { user, isAuthenticated, signOut } = useAuth();
+  const { user, isAuthenticated, signOut, session } = useAuth();
   const { holdings } = usePortfolio();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
     signOut();
     router.push("/");
+  }
+
+  async function handleDeleteAccount() {
+    if (!session?.access_token) return;
+
+    try {
+      const res = await fetch("/api/user/delete", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to delete account");
+      }
+
+      signOut();
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      console.error("Delete account error:", err);
+      alert("Failed to delete account. Please try again.");
+    }
   }
 
   if (!isAuthenticated || !user) {
@@ -208,15 +233,67 @@ export default function AccountPage() {
       </div>
 
       {/* Sign out */}
-      <button
-        onClick={handleSignOut}
-        disabled={signingOut}
-        className="flex w-full items-center justify-center gap-2 rounded-[12px] py-[12px] text-[13px] font-semibold transition-colors hover:bg-[#1a0000]"
-        style={{ border: `1px solid ${colors.red}44`, color: colors.red, background: "transparent" }}
-      >
-        <LogOut size={14} />
-        {signingOut ? "Signing out…" : "Sign Out"}
-      </button>
+      <div className="flex flex-col gap-3">
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="flex w-full items-center justify-center gap-2 rounded-[12px] py-[12px] text-[13px] font-semibold transition-colors hover:bg-[#1a0000]"
+          style={{ border: `1px solid ${colors.border}`, color: colors.textSecondary, background: "transparent" }}
+        >
+          <LogOut size={14} />
+          {signingOut ? "Signing out…" : "Sign Out"}
+        </button>
+
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-[12px] py-[12px] text-[13px] font-semibold transition-colors hover:bg-[#1a0000]"
+          style={{ border: `1px solid ${colors.red}44`, color: colors.red, background: "transparent" }}
+        >
+          <Trash2 size={14} />
+          Delete Account
+        </button>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 z-[500] flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.8)", backdropFilter: "blur(8px)" }}
+        >
+          <div
+            className="w-full max-w-sm rounded-[24px] border p-6"
+            style={{ background: colors.surface, borderColor: colors.border }}
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500">
+              <AlertTriangle size={24} />
+            </div>
+
+            <h3 className="mb-2 text-[18px] font-bold" style={{ color: colors.textPrimary }}>
+              Delete Account?
+            </h3>
+            <p className="mb-6 text-[14px] leading-relaxed" style={{ color: colors.textSecondary }}>
+              This action is permanent. All your data, including your balance of <b>{formatCurrency(user.cashBalance)}</b> and your card holdings, will be permanently deleted.
+            </p>
+
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleDeleteAccount}
+                className="flex w-full items-center justify-center rounded-[12px] py-[12px] text-[14px] font-bold transition-all active:scale-[0.98]"
+                style={{ background: colors.red, color: colors.textInverse }}
+              >
+                Permanently Delete
+              </button>
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="flex w-full items-center justify-center rounded-[12px] py-[12px] text-[14px] font-semibold transition-colors hover:bg-[#222]"
+                style={{ color: colors.textSecondary }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
