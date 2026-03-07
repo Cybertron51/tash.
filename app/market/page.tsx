@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2, Filter } from "lucide-react";
+import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2, Filter, Menu, X } from "lucide-react";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { SimpleView } from "@/components/market/SimpleView";
 import {
@@ -89,6 +89,7 @@ function MarketPageContent() {
   const { holdings } = usePortfolio();
   const isMobile = useIsMobile();
   const [hasMounted, setHasMounted] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   // Persist view preference and handle hydration
   useEffect(() => {
@@ -135,13 +136,20 @@ function MarketPageContent() {
 
         setSelectedSymbol((prev) => {
           if (urlSymbol && initialLookup.some(a => a.symbol === urlSymbol)) return urlSymbol;
-          return initialLookup.some(a => a.symbol === prev) ? prev : initialLookup[0].symbol;
+          return initialLookup.some(a => a.symbol === prev) ? prev : initialLookup[0]?.symbol || "";
         });
       }
       setIsLoading(false);
     }
     fetchAssets();
   }, [searchParams]);
+
+  // When selected symbol changes on mobile, auto-close sidebar
+  useEffect(() => {
+    if (isMobile) {
+      setShowSidebar(false);
+    }
+  }, [selectedSymbol, isMobile]);
 
   // ── Live price ticks via Realtime ───────────────────────────
   useEffect(() => {
@@ -290,7 +298,7 @@ function MarketPageContent() {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Simple view / Mobile view
+  // Simple view
   // ─────────────────────────────────────────────────────────
 
   if (isLoading || assets.length === 0) {
@@ -313,14 +321,12 @@ function MarketPageContent() {
         style={{ minHeight: `calc(100dvh - ${chromeOffset})` }}
       >
         {/* Toggle — top-right, same position as in advanced view */}
-        {!isMobile && (
-          <div
-            className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-[9px]"
-            style={{ background: colors.background, borderColor: colors.border }}
-          >
-            <ViewToggle mode={viewMode} onChange={handleViewChange} />
-          </div>
-        )}
+        <div
+          className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-[9px]"
+          style={{ background: colors.background, borderColor: colors.border }}
+        >
+          <ViewToggle mode={viewMode} onChange={handleViewChange} />
+        </div>
 
         <SimpleView
           assets={visibleAssets}
@@ -342,13 +348,30 @@ function MarketPageContent() {
 
   return (
     <div
-      className="flex"
+      className="flex flex-col md:flex-row"
       style={{ height: `calc(100dvh - ${chromeOffset})`, overflow: "hidden" }}
     >
-      {/* ── LEFT: Asset list ─────────────────────────────── */}
+      {/* ── Mobile Backdrop ──────────────────────────────── */}
+      {isMobile && showSidebar && (
+        <div
+          className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
+
+      {/* ── LEFT: Asset list (Sidebar) ─────────────────────── */}
       <aside
-        className="flex flex-col overflow-y-auto border-r"
-        style={{ width: 240, minWidth: 240, borderColor: colors.border, background: colors.background }}
+        className={cn(
+          "flex flex-col overflow-y-auto border-r transition-transform duration-300 z-[100]",
+          isMobile ? "fixed inset-y-0 left-0 bottom-[64px]" : "relative", // 64px = BottomNav height
+          isMobile && !showSidebar ? "-translate-x-full" : "translate-x-0"
+        )}
+        style={{
+          width: 280,
+          minWidth: 280,
+          borderColor: colors.border,
+          background: colors.background,
+        }}
       >
         <div
           className="sticky top-0 z-[1] flex items-center justify-between border-b px-4 py-[10px]"
@@ -360,21 +383,28 @@ function MarketPageContent() {
               Live Market
             </span>
           </div>
-          <label
-            className="flex items-center gap-[6px] cursor-pointer"
-            title={showNonTradable ? "Hide non-tradable" : "Show non-tradable"}
-          >
-            <input
-              type="checkbox"
-              checked={showNonTradable}
-              onChange={() => setShowNonTradable(!showNonTradable)}
-              className="w-3 h-3 rounded-[3px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
-              style={{ border: `1px solid ${colors.borderSubtle}` }}
-            />
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-              Show all
-            </span>
-          </label>
+          <div className="flex items-center gap-3">
+            <label
+              className="flex items-center gap-[6px] cursor-pointer"
+              title={showNonTradable ? "Hide non-tradable" : "Show non-tradable"}
+            >
+              <input
+                type="checkbox"
+                checked={showNonTradable}
+                onChange={() => setShowNonTradable(!showNonTradable)}
+                className="w-3 h-3 rounded-[3px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
+                style={{ border: `1px solid ${colors.borderSubtle}` }}
+              />
+              <span className="text-[10px] font-semibold uppercase tracking-wider hidden sm:inline" style={{ color: colors.textMuted }}>
+                Show all
+              </span>
+            </label>
+            {isMobile && (
+              <button onClick={() => setShowSidebar(false)} className="p-1 -mr-2">
+                <X size={16} style={{ color: colors.textMuted }} />
+              </button>
+            )}
+          </div>
         </div>
 
         {visibleAssets.map((asset) => {
@@ -437,188 +467,210 @@ function MarketPageContent() {
         })}
       </aside>
 
-      {/* ── CENTER: Chart + Stats + Grid ─────────────────── */}
-      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto" style={{ background: colors.background }}>
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-4"
-          style={{ borderColor: colors.border }}>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-[20px] font-bold leading-tight tracking-tight" style={{ color: colors.textPrimary }}>
-                {selected.name}
-              </h1>
-              <div
-                className="rounded-[6px] px-2 py-[3px]"
-                style={{ background: colors.greenMuted, border: `1px solid ${colors.green}33` }}
-              >
-                <span className="text-[10px] font-bold tracking-wide" style={{ color: colors.green }}>
-                  PSA {selected.grade}
+      {/* ── CENTER & RIGHT WRAPPER (Mobile scrollable, Desktop flex) ── */}
+      <div className="flex flex-1 flex-col md:flex-row overflow-y-auto md:overflow-hidden pb-[64px] md:pb-0">
+
+        {/* ── CENTER: Chart + Stats + Grid ─────────────────── */}
+        <main className="flex min-w-0 flex-1 flex-col md:overflow-y-auto" style={{ background: colors.background }}>
+          {/* Header Row */}
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b px-4 sm:px-6 py-4"
+            style={{ borderColor: colors.border }}>
+            <div className="flex items-start gap-3">
+              {isMobile && (
+                <button
+                  onClick={() => setShowSidebar(!showSidebar)}
+                  className="mt-[2px] p-1.5 rounded-md self-start"
+                  style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.borderSubtle}` }}
+                >
+                  <Menu size={18} style={{ color: colors.textPrimary }} />
+                </button>
+              )}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-[18px] sm:text-[20px] font-bold leading-tight tracking-tight break-words" style={{ color: colors.textPrimary }}>
+                    {selected.name}
+                  </h1>
+                  <div
+                    className="rounded-[6px] px-2 py-[3px]"
+                    style={{ background: colors.greenMuted, border: `1px solid ${colors.green}33` }}
+                  >
+                    <span className="text-[10px] whitespace-nowrap font-bold tracking-wide" style={{ color: colors.green }}>
+                      PSA {selected.grade}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-[3px] text-[11px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  {selected.symbol} · {selected.set}
+                </p>
+              </div>
+            </div>
+
+            <div className="text-left sm:text-right mt-2 sm:mt-0 pl-[42px] sm:pl-0">
+              <p className="tabular-nums text-[24px] sm:text-[28px] font-bold leading-none tracking-tight" style={{ color: colors.textPrimary }}>
+                {formatCurrency(selected.price)}
+              </p>
+              <div className="mt-[5px] flex items-center sm:justify-end gap-[5px]">
+                {isUp
+                  ? <TrendingUp size={13} strokeWidth={2.5} style={{ color: colors.green }} />
+                  : <TrendingDown size={13} strokeWidth={2.5} style={{ color: colors.red }} />
+                }
+                <span className="tabular-nums text-[13px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
+                  {isUp ? "+" : ""}{formatCurrency(selected.change)} ({isUp ? "+" : ""}{selected.changePct.toFixed(2)}%)
                 </span>
               </div>
             </div>
-            <p className="mt-[3px] text-[11px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-              {selected.symbol} · {selected.set}
-            </p>
           </div>
-          <div className="text-right">
-            <p className="tabular-nums text-[28px] font-bold leading-none tracking-tight" style={{ color: colors.textPrimary }}>
-              {formatCurrency(selected.price)}
-            </p>
-            <div className="mt-[5px] flex items-center justify-end gap-[5px]">
-              {isUp
-                ? <TrendingUp size={13} strokeWidth={2.5} style={{ color: colors.green }} />
-                : <TrendingDown size={13} strokeWidth={2.5} style={{ color: colors.red }} />
-              }
-              <span className="tabular-nums text-[13px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
-                {isUp ? "+" : ""}{formatCurrency(selected.change)} ({isUp ? "+" : ""}{selected.changePct.toFixed(2)}%)
-              </span>
+
+          <div className="px-6 pt-4 border-b" style={{ borderColor: colors.border }}>
+            <div className="flex gap-6">
+              <button
+                onClick={() => setDashboardTab("image")}
+                className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                style={{
+                  color: dashboardTab === "image" ? colors.textPrimary : colors.textMuted,
+                  borderBottom: `2px solid ${dashboardTab === "image" ? colors.green : "transparent"}`,
+                }}
+              >
+                Image
+              </button>
+              <button
+                onClick={() => setDashboardTab("chart")}
+                className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
+                style={{
+                  color: dashboardTab === "chart" ? colors.textPrimary : colors.textMuted,
+                  borderBottom: `2px solid ${dashboardTab === "chart" ? colors.green : "transparent"}`,
+                }}
+              >
+                Price Chart
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="px-6 pt-4 border-b" style={{ borderColor: colors.border }}>
-          <div className="flex gap-6">
-            <button
-              onClick={() => setDashboardTab("image")}
-              className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
-              style={{
-                color: dashboardTab === "image" ? colors.textPrimary : colors.textMuted,
-                borderBottom: `2px solid ${dashboardTab === "image" ? colors.green : "transparent"}`,
-              }}
-            >
-              Image
-            </button>
-            <button
-              onClick={() => setDashboardTab("chart")}
-              className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
-              style={{
-                color: dashboardTab === "chart" ? colors.textPrimary : colors.textMuted,
-                borderBottom: `2px solid ${dashboardTab === "chart" ? colors.green : "transparent"}`,
-              }}
-            >
-              Price Chart
-            </button>
-          </div>
-        </div>
+          <div className="px-6 py-5">
+            {dashboardTab === "image" ? (
+              <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
+                {(() => {
+                  const h = holdings?.find(h => h.symbol === selected.symbol);
+                  const hiResImage = selected.imageUrl || h?.imageUrl || `/cards/${selected.symbol}.svg`;
+                  const psaThumbnail = h?.imageUrl && selected.imageUrl && h.imageUrl !== selected.imageUrl ? h.imageUrl : null;
+                  const rawScan = h?.rawImageUrl || null;
+                  // Build image list: hi-res first, then optional extras
+                  const images = [hiResImage, ...(psaThumbnail ? [psaThumbnail] : []), ...(rawScan ? [rawScan] : [])].filter((v, i, a) => a.indexOf(v) === i);
 
-        <div className="px-6 py-5">
-          {dashboardTab === "image" ? (
-            <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
-              {(() => {
-                const h = holdings?.find(h => h.symbol === selected.symbol);
-                const hiResImage = selected.imageUrl || h?.imageUrl || `/cards/${selected.symbol}.svg`;
-                const psaThumbnail = h?.imageUrl && selected.imageUrl && h.imageUrl !== selected.imageUrl ? h.imageUrl : null;
-                const rawScan = h?.rawImageUrl || null;
-                // Build image list: hi-res first, then optional extras
-                const images = [hiResImage, ...(psaThumbnail ? [psaThumbnail] : []), ...(rawScan ? [rawScan] : [])].filter((v, i, a) => a.indexOf(v) === i);
-
-                return (
-                  <div className="flex flex-col items-center gap-3">
-                    <div
-                      onClick={() => {
-                        if (images.length > 1) {
-                          setActiveMarketImageIndex((prev) => (prev + 1) % images.length);
-                        }
-                      }}
-                      className="relative overflow-hidden shrink-0"
-                      style={{
-                        width: 220, height: 310, borderRadius: 12,
-                        border: `1px solid ${colors.borderSubtle}`,
-                        background: colors.surfaceOverlay,
-                        cursor: images.length > 1 ? "pointer" : "default",
-                      }}
-                    >
-                      <img
-                        src={images[activeMarketImageIndex] || images[0]}
-                        alt={selected.name}
-                        className="w-full h-full"
-                        style={{ objectFit: 'contain', imageRendering: 'auto' }}
-                        onError={(e) => {
-                          e.currentTarget.src = "https://via.placeholder.com/220x310/1B1B1B/333333?text=Card+Image";
+                  return (
+                    <div className="flex flex-col items-center gap-3">
+                      <div
+                        onClick={() => {
+                          if (images.length > 1) {
+                            setActiveMarketImageIndex((prev) => (prev + 1) % images.length);
+                          }
                         }}
-                      />
-                    </div>
-                    {/* Carousel dots */}
-                    {images.length > 1 && (
-                      <div className="flex gap-1.5">
-                        {images.map((_, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: i === activeMarketImageIndex ? colors.textPrimary : colors.borderSubtle,
-                            }}
-                          />
-                        ))}
+                        className="relative overflow-hidden shrink-0"
+                        style={{
+                          width: 220, height: 310, borderRadius: 12,
+                          border: `1px solid ${colors.borderSubtle}`,
+                          background: colors.surfaceOverlay,
+                          cursor: images.length > 1 ? "pointer" : "default",
+                        }}
+                      >
+                        <img
+                          src={images[activeMarketImageIndex] || images[0]}
+                          alt={selected.name}
+                          className="w-full h-full"
+                          style={{ objectFit: 'contain', imageRendering: 'auto' }}
+                          onError={(e) => {
+                            e.currentTarget.src = "https://via.placeholder.com/220x310/1B1B1B/333333?text=Card+Image";
+                          }}
+                        />
                       </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </div>
-          ) : (
-            <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
-          )}
-        </div>
-
-        <div className="mx-6 my-3 grid grid-cols-4 overflow-hidden rounded-[10px] border mb-8"
-          style={{ borderColor: colors.border, background: colors.surface }}>
-          {[
-            { label: "24H High", value: formatCurrency(selected.high24h) },
-            { label: "24H Low", value: formatCurrency(selected.low24h) },
-            { label: "Volume", value: `${selected.volume24h} cop.` },
-            { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : selected.category === "sports" ? "Sports" : selected.category === "mtg" ? "Magic" : "Other" },
-          ].map((stat, i) => (
-            <div
-              key={stat.label}
-              className={cn("flex flex-col gap-[4px] px-4 py-3", i < 3 && "border-r")}
-              style={{ borderColor: colors.borderSubtle }}
-            >
-              <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                {stat.label}
-              </span>
-              <span className="tabular-nums text-[13px] font-semibold" style={{ color: colors.textPrimary }}>
-                {stat.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      </main>
-
-      {/* ── RIGHT: Toggle + Order book + Trade panel ─────── */}
-      <aside
-        className="flex flex-col overflow-hidden border-l"
-        style={{ width: 280, minWidth: 280, borderColor: colors.border, background: colors.background }}
-      >
-        {/* Toggle row */}
-        <div
-          className="flex items-center justify-end border-b px-3 py-[9px]"
-          style={{ background: colors.background, borderColor: colors.border }}
-        >
-          <ViewToggle mode={viewMode} onChange={handleViewChange} />
-        </div>
-
-        {/* Order Book label */}
-        <div
-          className="border-b px-3 py-[8px]"
-          style={{ borderColor: colors.border }}
-        >
-          <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
-            Order Book
-          </span>
-        </div>
-
-        <div className="flex flex-1 flex-col overflow-hidden border-b" style={{ borderColor: colors.border }}>
-          <div className="flex-1 overflow-y-auto">
-            {orderBook && <OrderBook orderBook={orderBook} />}
+                      {/* Carousel dots */}
+                      {images.length > 1 && (
+                        <div className="flex gap-1.5">
+                          {images.map((_, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: i === activeMarketImageIndex ? colors.textPrimary : colors.borderSubtle,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            ) : (
+              <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
+            )}
           </div>
-        </div>
 
-        <div className="overflow-y-auto">
-          {selected && <TradePanel asset={selected} orderBook={orderBook} onRequestSignIn={() => setShowSignIn(true)} />}
-        </div>
-      </aside>
+          <div className="mx-6 my-3 grid grid-cols-4 overflow-hidden rounded-[10px] border mb-8"
+            style={{ borderColor: colors.border, background: colors.surface }}>
+            {[
+              { label: "24H High", value: formatCurrency(selected.high24h) },
+              { label: "24H Low", value: formatCurrency(selected.low24h) },
+              { label: "Volume", value: `${selected.volume24h} cop.` },
+              { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : selected.category === "sports" ? "Sports" : selected.category === "mtg" ? "Magic" : "Other" },
+            ].map((stat, i) => (
+              <div
+                key={stat.label}
+                className={cn("flex flex-col gap-[4px] px-4 py-3", i < 3 && "border-r")}
+                style={{ borderColor: colors.borderSubtle }}
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  {stat.label}
+                </span>
+                <span className="tabular-nums text-[13px] font-semibold" style={{ color: colors.textPrimary }}>
+                  {stat.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </main>
+
+        {/* ── RIGHT: Toggle + Order book + Trade panel ─────── */}
+        <aside
+          className="flex flex-col shrink-0 md:border-l"
+          style={{ width: isMobile ? "100%" : 320, minWidth: isMobile ? "100%" : 320, borderColor: colors.border, background: colors.background }}
+        >
+          {/* Toggle row */}
+          <div
+            className="flex items-center justify-between md:justify-end border-b px-4 py-[9px]"
+            style={{ background: colors.background, borderColor: colors.border }}
+          >
+            {isMobile && (
+              <span className="text-[12px] font-bold text-white tracking-wide">
+                Trade Panel
+              </span>
+            )}
+            <ViewToggle mode={viewMode} onChange={handleViewChange} />
+          </div>
+
+          {/* Order Book label */}
+          <div
+            className="border-b px-4 py-[8px]"
+            style={{ borderColor: colors.border }}
+          >
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
+              Order Book
+            </span>
+          </div>
+
+          <div className="flex md:flex-1 flex-col overflow-hidden border-b" style={{ borderColor: colors.border, minHeight: isMobile ? 300 : 'auto' }}>
+            <div className="flex-1 overflow-y-auto">
+              {orderBook && <OrderBook orderBook={orderBook} />}
+            </div>
+          </div>
+
+          <div className="overflow-y-auto">
+            {selected && <TradePanel asset={selected} orderBook={orderBook} onRequestSignIn={() => setShowSignIn(true)} />}
+          </div>
+        </aside>
+      </div>
 
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </div>
