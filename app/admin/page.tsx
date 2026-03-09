@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPatch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
-import { Loader2, Check, Users, Package, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 
@@ -62,14 +62,14 @@ export default function AdminPage() {
         else setIsLoading(false);
     }, [isAuthenticated, user?.email, activeTab]);
 
-    async function approveItem(id: string) {
+    async function updateItemStatus(id: string, action: "approve" | "disapprove") {
         // Optimistic UI
         setShippedItems((prev) => prev.filter((item) => item.id !== id));
 
         try {
-            await apiPatch("/api/admin/approve", { holdingId: id });
+            await apiPatch("/api/admin/approve", { holdingId: id, action });
         } catch (err) {
-            console.error("Failed to approve:", err);
+            console.error(`Failed to ${action}:`, err);
         }
     }
 
@@ -207,11 +207,11 @@ export default function AdminPage() {
                                                             fontWeight: 700,
                                                             padding: "2px 6px",
                                                             borderRadius: 4,
-                                                            background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : item.status === "returning" ? "rgba(59,130,246,0.15)" : "rgba(245,130,66,0.15)",
-                                                            color: item.status === "shipped" ? "#F5C842" : item.status === "returning" ? "#3B82F6" : "#F58242",
+                                                            background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : item.status === "returning" ? "rgba(59,130,246,0.15)" : item.status === "disapproved" ? "rgba(239, 68, 68, 0.15)" : "rgba(245,130,66,0.15)",
+                                                            color: item.status === "shipped" ? "#F5C842" : item.status === "returning" ? "#3B82F6" : item.status === "disapproved" ? "#EF4444" : "#F58242",
                                                             textTransform: "uppercase"
                                                         }}>
-                                                            {item.status === "shipped" ? "Shipped" : item.status === "returning" ? "Returning" : "Pending"}
+                                                            {item.status === "shipped" ? "Shipped" : item.status === "returning" ? "Returning" : item.status === "disapproved" ? "Disapproved" : "Pending"}
                                                         </span>
                                                     </div>
                                                     <p style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 4 }}>
@@ -253,30 +253,56 @@ export default function AdminPage() {
                                         </div>
 
                                         {/* Actions */}
-                                        {item.status !== "returning" && (
-                                            <button
-                                                onClick={() => approveItem(item.id)}
-                                                style={{
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    gap: 6,
-                                                    padding: "10px 16px",
-                                                    borderRadius: 8,
-                                                    background: colors.green,
-                                                    color: colors.textInverse,
-                                                    border: "none",
-                                                    fontWeight: 700,
-                                                    fontSize: 13,
-                                                    cursor: "pointer",
-                                                    transition: "transform 0.1s",
-                                                }}
-                                                onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
-                                                onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                                                onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-                                            >
-                                                <Check size={14} strokeWidth={3} />
-                                                Approve & Vault
-                                            </button>
+                                        {item.status !== "returning" && item.status !== "disapproved" && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                <button
+                                                    onClick={() => updateItemStatus(item.id, "approve")}
+                                                    style={{
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        gap: 6,
+                                                        padding: "10px 16px",
+                                                        borderRadius: 8,
+                                                        background: colors.green,
+                                                        color: colors.textInverse,
+                                                        border: "none",
+                                                        fontWeight: 700,
+                                                        fontSize: 13,
+                                                        cursor: "pointer",
+                                                        transition: "transform 0.1s",
+                                                    }}
+                                                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                                                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                                    onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                                >
+                                                    <Check size={14} strokeWidth={3} />
+                                                    Approve & Vault
+                                                </button>
+                                                <button
+                                                    onClick={() => updateItemStatus(item.id, "disapprove")}
+                                                    style={{
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        gap: 6,
+                                                        padding: "10px 16px",
+                                                        borderRadius: 8,
+                                                        background: `rgba(239, 68, 68, 0.1)`,
+                                                        color: "#EF4444",
+                                                        border: `1px solid rgba(239, 68, 68, 0.2)`,
+                                                        fontWeight: 700,
+                                                        fontSize: 13,
+                                                        cursor: "pointer",
+                                                        transition: "all 0.1s",
+                                                    }}
+                                                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(239, 68, 68, 0.15)")}
+                                                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)")}
+                                                    onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
+                                                    onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                                                >
+                                                    <X size={14} strokeWidth={3} />
+                                                    Disapprove
+                                                </button>
+                                            </div>
                                         )}
 
                                     </div>

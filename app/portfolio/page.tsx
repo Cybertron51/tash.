@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import Link from "next/link";
 import { X, Search, Plus, Camera, Upload, ArrowDownLeft, ArrowUpRight, Tag } from "lucide-react";
 import Image from "next/image";
 
@@ -40,7 +41,7 @@ type ModalState =
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";
-type StatusFilter = "all" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn";
+type StatusFilter = "all" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn" | "disapproved";
 
 interface Activity {
   id: string;
@@ -64,7 +65,7 @@ interface DepositForm {
 // ─────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { holdings, openOrders, addHolding, updateHolding, removeOpenOrder } = usePortfolio();
+  const { holdings, openOrders, addHolding, updateHolding, removeHolding, removeOpenOrder } = usePortfolio();
   const { isAuthenticated, session, user, updateBalance } = useAuth();
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -285,6 +286,44 @@ export default function PortfolioPage() {
     setModalState(null);
   }
 
+  async function handleRemoveCard(id: string) {
+    const holding = holdings.find((h) => h.id === id);
+    if (!holding || !session) return;
+
+    if (!confirm(`Are you sure you want to remove ${holding.name} from your portfolio?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/vault/holdings?id=${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to remove card");
+      }
+
+      // Update local state
+      removeHolding(id);
+      setSelectedId(null);
+      setActivities((prev) => [...prev, {
+        id: `a${Date.now()}`,
+        type: "cancelled", // Using cancelled as a close enough type
+        cardName: holding.name,
+        grade: holding.grade,
+        amount: priceMap[holding.symbol] ?? 0,
+        timestamp: new Date(),
+      }]);
+    } catch (err: any) {
+      console.error("Failed to remove card:", err);
+      alert(err.message || "Failed to remove card. Please try again.");
+    }
+  }
+
   async function confirmShipment() {
     if (!modalState || modalState.type !== "ship") return;
     const holding = holdings.find((h) => h.id === modalState.holdingId);
@@ -501,6 +540,7 @@ export default function PortfolioPage() {
               { key: "authenticating" as const, label: "Authenticating" },
               { key: "tradable" as const, label: "Vaulted" },
               { key: "listed" as const, label: "Listed" },
+              { key: "disapproved" as const, label: "Disapproved" },
             ]).map(({ key, label }) => {
               const count = key === "all" ? holdings.length : holdings.filter((h) => h.status === key).length;
               const isActive = statusFilter === key;
@@ -596,7 +636,8 @@ export default function PortfolioPage() {
                               holding.status === "tradable" ? colors.green
                                 : holding.status === "listed" ? colors.gold
                                   : holding.status === "withdrawn" ? colors.textMuted
-                                    : "#F5C842", // pending, shipped, received, authenticating
+                                    : holding.status === "disapproved" ? colors.red
+                                      : "#F5C842", // pending, shipped, received, authenticating
                           }}
                         />
                         <div
@@ -692,6 +733,7 @@ export default function PortfolioPage() {
             onCancelListing={handleCancelListing}
             onOpenWithdrawModal={openWithdrawModal}
             onOpenShipModal={openShipModal}
+            onRemoveCard={handleRemoveCard}
           />
         )}
       </main>
@@ -1313,9 +1355,10 @@ interface DetailPanelProps {
   onCancelListing: (id: string) => void;
   onOpenWithdrawModal: (id: string) => void;
   onOpenShipModal: (id: string) => void;
+  onRemoveCard: (id: string) => void;
 }
 
-function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenShipModal }: DetailPanelProps) {
+function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenShipModal, onRemoveCard }: DetailPanelProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const officialImage = holding.imageUrl || `/cards/${holding.symbol}.svg`;
   const images = holding.rawImageUrl ? [officialImage, holding.rawImageUrl] : [officialImage];
@@ -1338,6 +1381,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
     withdrawn: { label: "Withdrawn", bg: colors.surfaceOverlay, color: colors.textMuted },
     listed: { label: "Listed for Sale", bg: colors.surface, color: colors.textSecondary },
     returning: { label: "Returning", bg: "rgba(59,130,246,0.15)", color: "#3B82F6" },
+    disapproved: { label: "Disapproved", bg: "rgba(255,59,48,0.15)", color: colors.red },
   };
 
   const status = statusConfig[holding.status];
@@ -1460,6 +1504,24 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
           <button disabled className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold" style={{ background: colors.surface, color: colors.textMuted, cursor: "not-allowed", border: `1px solid ${colors.borderSubtle}` }}>
             {status.label}
           </button>
+        )}
+        {holding.status === "disapproved" && (
+          <>
+            <Link
+              href={`/scan?reupload=${holding.id}`}
+              className="flex-1 flex items-center justify-center rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150"
+              style={{ background: colors.green, color: colors.textInverse, border: `1px solid ${colors.green}` }}
+            >
+              Re-scan Card
+            </Link>
+            <button
+              onClick={() => onRemoveCard(holding.id)}
+              className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150"
+              style={{ background: "transparent", color: colors.red, cursor: "pointer", border: `1px solid ${colors.red}` }}
+            >
+              Remove Card
+            </button>
+          </>
         )}
       </div>
 

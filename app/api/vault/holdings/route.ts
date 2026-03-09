@@ -148,3 +148,106 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(data, { status: 201 });
 }
+
+export async function PATCH(req: NextRequest) {
+    const auth = await verifyAuth(req);
+    if (!auth) return unauthorized();
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const body = await req.json();
+    const { id, symbol, acquisitionPrice, status, certNumber, imageUrl, rawImageUrl, cardMeta } = body;
+
+    if (!id) {
+        return NextResponse.json({ error: "Holding ID is required" }, { status: 400 });
+    }
+
+    // Verify ownership
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("vault_holdings")
+        .select("user_id")
+        .eq("id", id)
+        .single();
+
+    if (fetchError || !existing) {
+        return NextResponse.json({ error: "Holding not found" }, { status: 404 });
+    }
+
+    if (existing.user_id !== auth.userId) {
+        return unauthorized();
+    }
+
+    const updates: any = {
+        updated_at: new Date().toISOString(),
+    };
+
+    if (symbol) updates.symbol = symbol;
+    if (acquisitionPrice !== undefined) updates.acquisition_price = acquisitionPrice;
+    if (status) updates.status = status;
+    if (certNumber !== undefined) updates.cert_number = certNumber;
+    if (imageUrl) updates.image_url = imageUrl;
+    if (rawImageUrl !== undefined) updates.raw_image_url = rawImageUrl;
+
+    if (cardMeta) {
+        if (cardMeta.name) updates.name = cardMeta.name;
+        if (cardMeta.set) updates.set_name = cardMeta.set;
+        if (cardMeta.year) updates.year = cardMeta.year;
+        if (cardMeta.grade) updates.psa_grade = cardMeta.grade;
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("vault_holdings")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+
+    if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+}
+
+export async function DELETE(req: NextRequest) {
+    const auth = await verifyAuth(req);
+    if (!auth) return unauthorized();
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+        return NextResponse.json({ error: "Holding ID is required" }, { status: 400 });
+    }
+
+    // Verify ownership and status
+    const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("vault_holdings")
+        .select("user_id, status")
+        .eq("id", id)
+        .single();
+
+    if (fetchError || !existing) {
+        return NextResponse.json({ error: "Holding not found" }, { status: 404 });
+    }
+
+    if (existing.user_id !== auth.userId) {
+        return unauthorized();
+    }
+
+    // Only allow deleting disapproved or pending items
+    if (!["disapproved", "pending_authentication"].includes(existing.status)) {
+        return NextResponse.json({ error: "Only disapproved or pending items can be removed" }, { status: 400 });
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+        .from("vault_holdings")
+        .delete()
+        .eq("id", id);
+
+    if (deleteError) {
+        return NextResponse.json({ error: deleteError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+}

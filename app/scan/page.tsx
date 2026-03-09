@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Camera,
   Upload,
@@ -24,7 +25,7 @@ import {
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { type VaultHolding } from "@/lib/vault-data";
-import { insertVaultHolding } from "@/lib/db/vault";
+import { insertVaultHolding, updateVaultHolding } from "@/lib/db/vault";
 
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -141,7 +142,9 @@ export default function ScanPage() {
   const [showSignIn, setShowSignIn] = useState(false);
 
   const { user, isAuthenticated } = useAuth();
-  const { holdings, addHolding } = usePortfolio();
+  const { holdings, addHolding, updateHolding } = usePortfolio();
+  const searchParams = useSearchParams();
+  const reuploadId = searchParams.get("reupload");
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -465,24 +468,42 @@ export default function ScanPage() {
       };
 
       try {
-        // 1. Save to Supabase DB using our helper — include card metadata for catalog auto-creation
-        const dbRes: any = await insertVaultHolding(newHolding, undefined, {
-          name: result.name,
-          category: result.category,
-          set: result.set,
-          year: result.year,
-          grade: Math.round(result.estimatedGrade ?? 9),
-          cardNumber: result.cardNumber,
-        });
+        if (reuploadId && successfulScans.indexOf(item) === 0) {
+          // 1. Re-upload flow: Update existing holding
+          await updateVaultHolding(reuploadId, newHolding, {
+            name: result.name,
+            category: result.category,
+            set: result.set,
+            year: result.year,
+            grade: Math.round(result.estimatedGrade ?? 9),
+            cardNumber: result.cardNumber,
+          });
 
-        if (dbRes && dbRes.id) {
-          newHolding.id = dbRes.id;
+          // 2. Update local context
+          updateHolding(reuploadId, {
+            ...newHolding,
+            status: "pending_authentication",
+          });
+        } else {
+          // 1. New scan flow: Save to Supabase DB using our helper
+          const dbRes: any = await insertVaultHolding(newHolding, undefined, {
+            name: result.name,
+            category: result.category,
+            set: result.set,
+            year: result.year,
+            grade: Math.round(result.estimatedGrade ?? 9),
+            cardNumber: result.cardNumber,
+          });
+
+          if (dbRes && dbRes.id) {
+            newHolding.id = dbRes.id;
+          }
+
+          // 2. Update local context immediately
+          addHolding(newHolding);
         }
-
-        // 2. Update local context immediately
-        addHolding(newHolding);
       } catch (e) {
-        console.error("Failed to add to vault:", e);
+        console.error("Failed to process vault operation:", e);
       }
     }
 

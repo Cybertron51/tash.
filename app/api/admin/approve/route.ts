@@ -18,17 +18,19 @@ export async function PATCH(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
-    const { holdingId } = body;
+    const { holdingId, action = "approve" } = body;
 
     if (!holdingId) {
         return NextResponse.json({ error: "holdingId is required" }, { status: 400 });
     }
 
+    const nextStatus = action === "disapprove" ? "disapproved" : "tradable";
+
     const { data, error } = await supabaseAdmin
         .from("vault_holdings")
-        .update({ status: "tradable" })
+        .update({ status: nextStatus })
         .eq("id", holdingId)
-        .in("status", ["shipped", "pending_authentication"])  // Can approve shipped or pending items
+        .in("status", ["shipped", "pending_authentication"])  // Can process shipped or pending items
         .select()
         .single();
 

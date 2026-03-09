@@ -55,6 +55,26 @@ export async function updateVaultHoldingStatus(
 }
 
 /**
+ * Full update of a vault holding (for re-uploads).
+ */
+export async function updateVaultHolding(
+    id: string,
+    holding: Partial<VaultHolding> & { symbol: string; acquisitionPrice: number },
+    cardMeta?: { name?: string; category?: string; set?: string; year?: number; grade?: number; cardNumber?: string | null }
+) {
+    return apiPatch("/api/vault/holdings", {
+        id,
+        symbol: holding.symbol,
+        acquisitionPrice: holding.acquisitionPrice,
+        status: holding.status || "pending_authentication",
+        certNumber: holding.certNumber || null,
+        imageUrl: holding.imageUrl || null,
+        rawImageUrl: holding.rawImageUrl || null,
+        cardMeta: cardMeta || null,
+    });
+}
+
+/**
  * Fetch a map of symbols to their number of active listings.
  * Used to flag cards that have no liquidity ("NOT TRADED").
  */
