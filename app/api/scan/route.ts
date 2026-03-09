@@ -19,6 +19,8 @@ function buildPrompt() {
 Return exactly this structure:
 {
   "isFullSlabVisible": true,
+  "isCleanBackground": true,
+  "isFillingScreen": true,
   "certNumber": "12345678",
   "cardName": "Charizard-Holo",
   "setName": "Base Set",
@@ -28,7 +30,9 @@ Return exactly this structure:
 }
 
 Valid values:
-- isFullSlabVisible: boolean. Set to true if the PSA label and the trading card body are clearly visible. It is OKAY if the very outer plastic edges of the slab are slightly cropped, as long as the label text and the card art are fully visible. If the card itself is cut off or the label is missing, set to false.
+- isFullSlabVisible: boolean. Must be true. The PSA label and the trading card body must be fully visible. If the card is cut off or the label is missing, set to false.
+- isCleanBackground: boolean. Set to true ONLY if the card is on a clean, monocolor, non-distracting background (e.g. a plain desk, a playmat). If there are other objects, hands, or a cluttered background, set to false.
+- isFillingScreen: boolean. Set to true ONLY if the trading card slab occupies at least 70% of the image area. If the card is too far away or small, set to false.
 - certNumber: Extract the 7 or 8-digit certification number from the PSA label. If you cannot read it clearly, return null.
 - cardName: Read the card name from the PSA label text. The PSA label always includes the card name (e.g. "Charizard-Holo", "Blastoise", "Mickey Mouse"). If the PSA label is not readable, identify the card from the card art itself. Always return a descriptive name, never return null or "Unknown".
 - setName: Read the set/brand name from the PSA label (e.g. "Base Set", "Pokemon Game", "Topps Chrome"). If not readable, make your best guess based on the card art. Never return null.
@@ -115,8 +119,16 @@ export async function POST(req: NextRequest) {
       try {
         const aiResult = JSON.parse(cleaned);
         const extractedCert = aiResult.certNumber || null;
+
+        // Quality Validation
+        const isFullSlab = !!aiResult.isFullSlabVisible;
+        const isCleanBg = !!aiResult.isCleanBackground;
+        const isFilling = !!aiResult.isFillingScreen;
+
         card = {
-          isFullSlabVisible: !!aiResult.isFullSlabVisible,
+          isFullSlabVisible: isFullSlab,
+          isCleanBackground: isCleanBg,
+          isFillingScreen: isFilling,
           certNumber: extractedCert,
           name: aiResult.cardName || "Unknown Card",
           set: aiResult.setName || "Unknown Set",
@@ -133,6 +145,10 @@ export async function POST(req: NextRequest) {
             card = { ...card, ...enriched, isFullSlabVisible: true };
           }
         }
+
+        // Strict Enforcement: If no PSA image is found, the user scan MUST be perfect
+        // (However, we only have imageUrl AFTER determineImageUrl runs below).
+        // So we'll run the check AFTER the parallel tasks.
       } catch (e) {
         console.error("AI Parse Error:", e);
         return NextResponse.json({ error: "Failed to identify card" }, { status: 422 });
@@ -148,6 +164,20 @@ export async function POST(req: NextRequest) {
 
     imageUrl = loadedImageUrl;
     rawImageUrl = loadedRawImageUrl;
+
+    // ─── Strict Quality Enforcement ───
+    // If we couldn't fetch an official PSA image, the user's scan must be high quality.
+    if (!imageUrl) {
+      if (!card.isFullSlabVisible) {
+        return NextResponse.json({ error: "Unacceptable Scan: The full trading card slab (label and body) must be visible." }, { status: 422 });
+      }
+      if (!card.isCleanBackground) {
+        return NextResponse.json({ error: "Unacceptable Scan: Please use a clean, monocolor background with no other objects." }, { status: 422 });
+      }
+      if (!card.isFillingScreen) {
+        return NextResponse.json({ error: "Unacceptable Scan: The card must fill most of the screen. Move closer and try again." }, { status: 422 });
+      }
+    }
 
     // ─── Symbol Matching (Crucial for preventing duplicates) ───
     const cardNameLower = (card.name ?? "").toLowerCase();
@@ -183,6 +213,11 @@ export async function POST(req: NextRequest) {
       imageUrl,
       rawImageUrl,
       pricing: null,
+      validation: {
+        isFullSlabVisible: card.isFullSlabVisible,
+        isCleanBackground: card.isCleanBackground,
+        isFillingScreen: card.isFillingScreen
+      }
     });
   } catch (error) {
     console.error("Scan API error:", error);

@@ -687,8 +687,8 @@ function CaptureStage({
         </h1>
         <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
           {reuploadId
-            ? "Take a better photo of the slab label to fix the disapproval."
-            : "Include the PSA label in the photo — AI identifies it instantly"}
+            ? "Take a better photo: whole card visible, filling the screen, on a clean monocolor background."
+            : "Scan the whole card on a clean, monocolor background for instant AI identification."}
         </p>
       </div>
 
@@ -908,7 +908,7 @@ function CaptureStage({
               <span style={{ color: colors.green }}>browse files</span>
             </p>
             <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-              JPG, PNG, HEIC — any size. Select multiple to batch scan.
+              JPG, PNG, HEIC — Ensure whole card is visible on a clean background.
             </p>
           </div>
           <input
@@ -1228,7 +1228,7 @@ function ResultStage({
                 <p style={{ fontSize: 13, fontWeight: 600, color: colors.red, margin: 0 }}>
                   Analysis Failed
                 </p>
-                <p style={{ fontSize: 11, color: colors.red, margin: "2px 0 0", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <p style={{ fontSize: 11, color: colors.red, margin: "2px 0 0", opacity: 0.9, lineHeight: 1.4 }}>
                   {errItem.error || "Unknown error"}
                 </p>
               </div>
