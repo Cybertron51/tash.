@@ -457,7 +457,7 @@ export default function ScanPage() {
     for (const item of successfulScans) {
       const result = item.result!;
       const holdingId = uuidv4();
-      const finalImageUrl = item.cardImageUrl ?? item.thumbDataUrl ?? "";
+      const finalImageUrl = item.cardImageUrl ?? "";
 
       const newHolding: VaultHolding = {
         id: holdingId, // Use the generated UUID
