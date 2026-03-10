@@ -50,7 +50,7 @@ export default function AuthCallbackPage() {
                     (Array.isArray(profile?.primary_goal) ? profile.primary_goal.length > 0 : !!profile?.primary_goal);
 
                 if (isIdentified) {
-                    router.push("/portfolio");
+                    router.push("/market");
                 } else {
                     router.push("/onboarding");
                 }

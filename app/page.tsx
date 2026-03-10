@@ -24,6 +24,13 @@ export default function LandingPage() {
     const { isAuthenticated } = useAuth();
     const router = useRouter();
 
+    // Redirect to market if already logged in
+    React.useEffect(() => {
+        if (isAuthenticated) {
+            router.push("/market");
+        }
+    }, [isAuthenticated, router]);
+
     return (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", overflow: "hidden" }}>
 

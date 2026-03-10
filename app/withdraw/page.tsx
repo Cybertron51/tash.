@@ -90,13 +90,20 @@ export default function WithdrawPage() {
         }
     }, [session, refreshProfile]);
 
-    // Auto-refresh profile if onboarding looks incomplete
-    // Require valid profile & stripe setup
+    // ── Automatic Sync ────────────────────────────────────
+    // Refresh profile and check Stripe status automatically
     useEffect(() => {
-        if (user && !user.stripeOnboardingComplete && user.stripeAccountId) {
+        if (!user || !session) return;
+
+        // 1. If currently showing an error, or Stripe onboarding looks incomplete
+        // we trigger a sync.
+        if (error || (!user.stripeOnboardingComplete && user.stripeAccountId)) {
+            handleSync();
+        } else {
+            // Otherwise just a regular profile refresh
             refreshProfile();
         }
-    }, [user, refreshProfile]);
+    }, [user?.id, user?.stripeOnboardingComplete, session]);
 
     // ── Amount → Withdraw API ─────────────────────────────
     const handleWithdraw = useCallback(async (amt: number) => {
@@ -159,7 +166,6 @@ export default function WithdrawPage() {
                         <AmountStage
                             onContinue={handleWithdraw}
                             onResolve={handleResolveStripe}
-                            onSync={handleSync}
                             availableBalance={user?.withdrawableBalance ?? 0}
                             loading={loading}
                             resolutionLoading={resolutionLoading}
@@ -186,7 +192,6 @@ export default function WithdrawPage() {
 function AmountStage({
     onContinue,
     onResolve,
-    onSync,
     availableBalance,
     loading,
     resolutionLoading,
@@ -194,7 +199,6 @@ function AmountStage({
 }: {
     onContinue: (amount: number) => void;
     onResolve: () => void;
-    onSync: () => void;
     availableBalance: number;
     loading: boolean;
     resolutionLoading: boolean;
@@ -321,9 +325,9 @@ function AmountStage({
                                     onClick={onResolve}
                                     disabled={resolutionLoading}
                                     style={{
-                                        padding: "6px 12px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
+                                        padding: "6px 16px",
+                                        borderRadius: 8,
+                                        fontSize: 13,
                                         fontWeight: 600,
                                         background: colors.red,
                                         color: "#fff",
@@ -331,23 +335,7 @@ function AmountStage({
                                         cursor: resolutionLoading ? "not-allowed" : "pointer",
                                     }}
                                 >
-                                    {resolutionLoading ? "Loading..." : "Resolve on Stripe"}
-                                </button>
-                                <button
-                                    onClick={onSync}
-                                    disabled={loading}
-                                    style={{
-                                        padding: "6px 12px",
-                                        borderRadius: 6,
-                                        fontSize: 12,
-                                        fontWeight: 600,
-                                        background: "transparent",
-                                        color: colors.red,
-                                        border: `1px solid ${colors.red}44`,
-                                        cursor: loading ? "not-allowed" : "pointer",
-                                    }}
-                                >
-                                    {loading ? "Syncing..." : "Sync Status"}
+                                    {resolutionLoading ? "Loading..." : "Resolve on Stripe →"}
                                 </button>
                             </div>
                         </div>
