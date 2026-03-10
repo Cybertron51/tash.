@@ -75,47 +75,11 @@ export async function lockFunds(userId: string, amount: number) {
     // This prevents the user from spending the same money twice while an order is open.
 }
 
-/**
- * Calculates the date 3 business days ago.
- */
-export function getThreeBusinessDaysAgo(): Date {
-    const date = new Date();
-    let daysToSubtract = 3;
-
-    while (daysToSubtract > 0) {
-        date.setDate(date.getDate() - 1);
-        const day = date.getDay();
-        // 0 = Sunday, 6 = Saturday
-        if (day !== 0 && day !== 6) {
-            daysToSubtract--;
-        }
-    }
-    return date;
-}
 
 /**
  * Calculates the amount of unsettled funds for a user.
- * Funds are unsettled if they come from deposits or sales within the last 3 business days.
+ * Currently disabled: all funds are considered settled immediately.
  */
 export async function getUnsettledFunds(userId: string): Promise<number> {
-    const threeDaysAgo = getThreeBusinessDaysAgo().toISOString();
-
-    const [depositsRes, salesRes] = await Promise.all([
-        supabaseAdmin
-            .from("stripe_transactions")
-            .select("amount")
-            .eq("user_id", userId)
-            .eq("type", "deposit")
-            .gt("created_at", threeDaysAgo),
-        supabaseAdmin
-            .from("trades")
-            .select("price")
-            .eq("seller_id", userId)
-            .gt("executed_at", threeDaysAgo)
-    ]);
-
-    const depositSum = depositsRes.data?.reduce((sum, row) => sum + Number(row.amount), 0) || 0;
-    const saleSum = salesRes.data?.reduce((sum, row) => sum + Number(row.price), 0) || 0;
-
-    return depositSum + saleSum;
+    return 0;
 }

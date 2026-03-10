@@ -132,7 +132,6 @@ export default function WithdrawPage() {
                         <AmountStage
                             onContinue={handleWithdraw}
                             availableBalance={user?.withdrawableBalance ?? 0}
-                            totalBalance={user?.cashBalance ?? 0}
                             loading={loading}
                             error={error}
                         />
@@ -157,13 +156,11 @@ export default function WithdrawPage() {
 function AmountStage({
     onContinue,
     availableBalance,
-    totalBalance,
     loading,
     error,
 }: {
     onContinue: (amount: number) => void;
     availableBalance: number;
-    totalBalance: number;
     loading: boolean;
     error: string | null;
 }) {
@@ -263,13 +260,6 @@ function AmountStage({
                 </Link>
             </div>
 
-            {totalBalance > availableBalance && (
-                <div style={{ marginBottom: 24, marginTop: -16, padding: "0 4px" }}>
-                    <p style={{ fontSize: 13, color: colors.textSecondary, margin: 0, lineHeight: 1.4 }}>
-                        <strong>Total Balance: {formatCurrency(totalBalance)}.</strong> Unsettled funds from recent deposits or sales take 3 business days to become withdrawable.
-                    </p>
-                </div>
-            )}
 
             {/* Error banner */}
             {displayError && (
@@ -425,7 +415,7 @@ function AmountStage({
 
             <div style={{ marginTop: 16, textAlign: "center" }}>
                 <p style={{ fontSize: 12, color: colors.textMuted }}>
-                    Withdrawals are processed instantly but may take 1-3 business days to appear in your bank account depending on your bank.
+                    Withdrawals are processed instantly but may take up to 24 hours to appear in your bank account depending on your bank.
                 </p>
             </div>
 

@@ -21,8 +21,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const unsettledFunds = await getUnsettledFunds(auth.userId);
-    const withdrawable_balance = Math.max(0, Number(data.cash_balance) - unsettledFunds);
+    const withdrawable_balance = Number(data.cash_balance);
 
     return NextResponse.json({
         ...data,
