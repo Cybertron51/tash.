@@ -593,33 +593,8 @@ function SuccessStage({
                     textAlign: "center",
                 }}
             >
-                Back to Dashboard →
+                Back to Market →
             </Link>
-
-            <a
-                href="https://dashboard.stripe.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                    width: "100%",
-                    maxWidth: 340,
-                    padding: "12px 0",
-                    borderRadius: 12,
-                    fontSize: 14,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    border: `1px solid ${colors.border}`,
-                    background: "transparent",
-                    color: colors.textSecondary,
-                    textDecoration: "none"
-                }}
-            >
-                View on Stripe <ExternalLink size={14} />
-            </a>
         </div>
     );
 }

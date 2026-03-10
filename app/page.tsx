@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowRight } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -25,7 +25,7 @@ export default function LandingPage() {
     const router = useRouter();
 
     // Redirect to market if already logged in
-    React.useEffect(() => {
+    useEffect(() => {
         if (isAuthenticated) {
             router.push("/market");
         }

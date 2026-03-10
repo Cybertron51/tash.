@@ -21,25 +21,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
     const pathname = usePathname();
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncMessage, setSyncMessage] = useState<string | null>(null);
-
-    // 1. Not logged in? Show nothing (handled by page-level auth checks usually)
-    if (!isAuthenticated) return null;
-
-    // 2. Verified? Show the protected content
-    if (user?.stripeOnboardingComplete) {
-        return <>{children}</>;
-    }
-
     const syncAttemptedRef = useRef(false);
-
-    // ── Automatic Sync ────────────────────────────────────
-    useEffect(() => {
-        // Only trigger automatically if they have an account but aren't marked complete
-        if (user?.stripeAccountId && !user?.stripeOnboardingComplete && !syncAttemptedRef.current) {
-            syncAttemptedRef.current = true;
-            handleSync();
-        }
-    }, [user?.stripeAccountId, user?.stripeOnboardingComplete]);
 
     // 3. Not verified? Show the "Setup Required" screen
     const handleSync = async () => {
@@ -61,6 +43,23 @@ export function VerificationGate({ children }: VerificationGateProps) {
             setIsSyncing(false);
         }
     };
+
+    // ── Automatic Sync ────────────────────────────────────
+    useEffect(() => {
+        // Only trigger automatically if they have an account but aren't marked complete
+        if (isAuthenticated && user?.stripeAccountId && !user?.stripeOnboardingComplete && !syncAttemptedRef.current) {
+            syncAttemptedRef.current = true;
+            handleSync();
+        }
+    }, [isAuthenticated, user?.stripeAccountId, user?.stripeOnboardingComplete]);
+
+    // 1. Not logged in? Show nothing (handled by page-level auth checks usually)
+    if (!isAuthenticated) return null;
+
+    // 2. Verified? Show the protected content
+    if (user?.stripeOnboardingComplete) {
+        return <>{children}</>;
+    }
 
     return (
         <div
