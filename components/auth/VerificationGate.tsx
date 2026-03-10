@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShieldCheck, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
@@ -30,18 +30,30 @@ export function VerificationGate({ children }: VerificationGateProps) {
         return <>{children}</>;
     }
 
+    const syncAttemptedRef = useRef(false);
+
+    // ── Automatic Sync ────────────────────────────────────
+    useEffect(() => {
+        // Only trigger automatically if they have an account but aren't marked complete
+        if (user?.stripeAccountId && !user?.stripeOnboardingComplete && !syncAttemptedRef.current) {
+            syncAttemptedRef.current = true;
+            handleSync();
+        }
+    }, [user?.stripeAccountId, user?.stripeOnboardingComplete]);
+
     // 3. Not verified? Show the "Setup Required" screen
     const handleSync = async () => {
         setIsSyncing(true);
         setSyncMessage(null);
         try {
-            const data = await apiPost<{ onboardingComplete?: boolean, message?: string }>("/api/connect/sync", {});
+            // Note: API returns stripeOnboardingComplete
+            const data = await apiPost<{ stripeOnboardingComplete?: boolean, message?: string }>("/api/connect/sync", {});
 
-            if (data.onboardingComplete) {
-                // Success! The parent layout will re-render because we called refreshProfile
+            if (data.stripeOnboardingComplete) {
+                setSyncMessage("Verification complete! Please refresh the page to continue.");
                 await refreshProfile();
             } else {
-                setSyncMessage(data.message || "Still pending at Stripe.");
+                setSyncMessage(data.message || "Still pending. Stripe might still be processing your information.");
             }
         } catch (err) {
             setSyncMessage("Failed to sync. Please try again.");
@@ -91,14 +103,16 @@ export function VerificationGate({ children }: VerificationGateProps) {
             </div>
 
             {syncMessage && (
-                <div className="mt-6 flex items-center gap-2 text-[12px] font-medium" style={{ color: colors.gold }}>
-                    <AlertCircle size={14} />
-                    <span>{syncMessage}</span>
+                <div className="mt-6 flex flex-col items-center gap-2">
+                    <div className="flex items-center gap-2 text-[12px] font-medium" style={{ color: colors.gold }}>
+                        <AlertCircle size={14} />
+                        <span>{syncMessage}</span>
+                    </div>
                 </div>
             )}
 
-            <p className="mt-12 max-w-[400px] text-[11px] uppercase tracking-[0.1em]" style={{ color: colors.textMuted }}>
-                Verification is usually instant but can take up to 24 hours if Stripe requires manual review.
+            <p className="mt-12 max-w-[400px] text-[11px] font-medium leading-relaxed" style={{ color: colors.textMuted }}>
+                Note: Stripe verification is usually instant, but can sometimes take a few minutes (or up to 24 hours) to fully activate. If you just finished setup, please wait a moment then try syncing.
             </p>
         </div>
     );

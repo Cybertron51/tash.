@@ -8,7 +8,7 @@
  *   2. success — Withdrawal initiated, link to history
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { CheckCircle, AlertCircle, Loader2, ArrowLeft, ExternalLink } from "lucide-react";
 import { colors, layout } from "@/lib/theme";
@@ -79,10 +79,10 @@ export default function WithdrawPage() {
             });
             const data = await res.json();
             if (data.stripeOnboardingComplete) {
-                await refreshProfile();
-            } else {
-                setError(data.message || "Stripe says you still have requirements to complete.");
+                setError(null);
             }
+            // Always refresh profile to pick up any partial changes
+            await refreshProfile();
         } catch {
             setError("Failed to sync status.");
         } finally {
@@ -90,20 +90,20 @@ export default function WithdrawPage() {
         }
     }, [session, refreshProfile]);
 
-    // ── Automatic Sync ────────────────────────────────────
-    // Refresh profile and check Stripe status automatically
-    useEffect(() => {
-        if (!user || !session) return;
+    const hasSyncedRef = useRef(false);
 
-        // 1. If currently showing an error, or Stripe onboarding looks incomplete
-        // we trigger a sync.
-        if (error || (!user.stripeOnboardingComplete && user.stripeAccountId)) {
+    // ── Automatic Sync ────────────────────────────────────
+    // Automatically check status once on mount or return
+    useEffect(() => {
+        if (!user || !session || hasSyncedRef.current) return;
+
+        // If their Stripe account exists but onboarding is marked incomplete,
+        // we proactively check with Stripe to "get them access" automatically.
+        if (user.stripeAccountId && !user.stripeOnboardingComplete) {
+            hasSyncedRef.current = true;
             handleSync();
-        } else {
-            // Otherwise just a regular profile refresh
-            refreshProfile();
         }
-    }, [user?.id, user?.stripeOnboardingComplete, session]);
+    }, [user?.stripeAccountId, user?.stripeOnboardingComplete, session, handleSync]);
 
     // ── Amount → Withdraw API ─────────────────────────────
     const handleWithdraw = useCallback(async (amt: number) => {
@@ -166,6 +166,7 @@ export default function WithdrawPage() {
                         <AmountStage
                             onContinue={handleWithdraw}
                             onResolve={handleResolveStripe}
+                            onSync={handleSync}
                             availableBalance={user?.withdrawableBalance ?? 0}
                             loading={loading}
                             resolutionLoading={resolutionLoading}
@@ -192,6 +193,7 @@ export default function WithdrawPage() {
 function AmountStage({
     onContinue,
     onResolve,
+    onSync,
     availableBalance,
     loading,
     resolutionLoading,
@@ -199,6 +201,7 @@ function AmountStage({
 }: {
     onContinue: (amount: number) => void;
     onResolve: () => void;
+    onSync: () => void;
     availableBalance: number;
     loading: boolean;
     resolutionLoading: boolean;
@@ -320,7 +323,7 @@ function AmountStage({
                             </span>
 
                             {/* Remediation Buttons */}
-                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                                 <button
                                     onClick={onResolve}
                                     disabled={resolutionLoading}
@@ -337,6 +340,25 @@ function AmountStage({
                                 >
                                     {resolutionLoading ? "Loading..." : "Resolve on Stripe →"}
                                 </button>
+                                <button
+                                    onClick={onSync}
+                                    disabled={loading}
+                                    style={{
+                                        padding: "6px 16px",
+                                        borderRadius: 8,
+                                        fontSize: 13,
+                                        fontWeight: 600,
+                                        background: "transparent",
+                                        color: colors.red,
+                                        border: `1px solid ${colors.red}44`,
+                                        cursor: loading ? "not-allowed" : "pointer",
+                                    }}
+                                >
+                                    {loading ? "Syncing..." : "Sync Status"}
+                                </button>
+                                <p style={{ fontSize: 11, color: colors.red, opacity: 0.8, margin: "4px 0 0", width: "100%" }}>
+                                    Note: Stripe can take a few minutes to process info. If you just finished, try syncing or refresh the page.
+                                </p>
                             </div>
                         </div>
                     </div>
