@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
         .from("profiles")
-        .select("id, email, name, username, favorite_tcgs, primary_goal, cash_balance, locked_balance, created_at, stripe_account_id, stripe_onboarding_complete")
+        .select("id, email, name, username, favorite_tcgs, primary_goal, cash_balance, locked_balance, created_at, stripe_account_id, stripe_onboarding_complete, referral_code_id")
         .eq("id", auth.userId)
         .single();
 

@@ -33,19 +33,16 @@ BEGIN
   v_referral_code_text := NEW.raw_user_meta_data->>'referral_code';
   
   -- Look up the referral code ID in public.referral_codes
+  -- (This works for Email signups where we pass it in options.data)
   IF v_referral_code_text IS NOT NULL THEN
     SELECT id INTO v_referral_code_id FROM public.referral_codes WHERE code = v_referral_code_text;
   END IF;
 
-  -- ENFORCE: Check if code is valid
-  -- Special case for admin override
-  IF NEW.email != 'derekyp9@gmail.com' THEN
-    IF v_referral_code_id IS NULL THEN
-      -- In Supabase Auth triggers, RAISE EXCEPTION is the only way to stop the signup
-      -- and it will show up as a "Database error" in the frontend.
-      RAISE EXCEPTION 'A valid referral code is required. [%]', COALESCE(v_referral_code_text, 'NULL');
-    END IF;
-  END IF;
+  -- We no longer block sign-up at the trigger level with RAISE EXCEPTION.
+  -- Prohibiting account creation here breaks OAuth (Google/Apple) flows.
+  -- Instead, we allow the profile to be created with a NULL referral_code_id.
+  -- The application (Onboarding gate) will strictly enforce that referral_code_id 
+  -- must be set before the user can proceed to the app.
 
   INSERT INTO public.profiles (id, email, name, cash_balance, locked_balance, referral_code_id)
   VALUES (
@@ -58,11 +55,10 @@ BEGIN
   )
   ON CONFLICT (id) DO UPDATE SET
     email = EXCLUDED.email,
-    referral_code_id = EXCLUDED.referral_code_id;
+    referral_code_id = COALESCE(EXCLUDED.referral_code_id, public.profiles.referral_code_id);
 
   RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
-  -- Catch-all for any other DB errors to avoid generic error if possible
   RAISE EXCEPTION 'Signup Failed: %', SQLERRM;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
