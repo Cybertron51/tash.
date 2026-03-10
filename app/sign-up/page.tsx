@@ -102,15 +102,15 @@ export default function SignUpPage() {
 
     const handleGoogleOAuth = async () => {
         if (!supabase) return;
-
+        // For now, inform that referral codes are required via Email sign up
         if (!referralCode || referralValid !== true) {
             setErrorMsg("Please enter and validate a referral code first to join with Google.");
             return;
         }
 
-        // Save referral code to cookie for post-login retrieval
-        document.cookie = `referral_code=${referralCode}; path=/; max-age=3600; SameSite=Lax`;
-
+        // Note: Even if we validate here, the Supabase trigger might fail 
+        // if we can't pass the referral code to the raw_user_meta_data.
+        // We'll advise the user to use email for now if Google fails.
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {

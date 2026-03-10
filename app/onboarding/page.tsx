@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, Gamepad2, TrendingUp, Search, UserCircle2, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Gamepad2, TrendingUp, Search, UserCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { api, apiPatch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -11,12 +11,7 @@ import { useAuth } from "@/lib/auth";
 export default function OnboardingPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { session, user, isProfileComplete, refreshProfile } = useAuth();
-
-    // Referral state for users without a code (e.g. bypassed or OAuth without cookie)
-    const [onboardingReferralCode, setOnboardingReferralCode] = useState("");
-    const [isCheckingOnboardingRef, setIsCheckingOnboardingRef] = useState(false);
-    const [onboardingRefValid, setOnboardingRefValid] = useState<boolean | null>(null);
+    const { session, user, isProfileComplete } = useAuth();
 
     // Initialize step from URL if present
     const stepParam = searchParams.get("step");
@@ -90,6 +85,7 @@ export default function OnboardingPage() {
         };
     }, [username]);
 
+    const { refreshProfile } = useAuth();
 
     // Auto-refresh profile if returning from Stripe
     useEffect(() => {
@@ -136,43 +132,17 @@ export default function OnboardingPage() {
         }
     }, [session, user, hasAutofilled, username]);
 
-    // Sync referral code from cookie if missing in profile
-    useEffect(() => {
-        if (!user || user.referralCodeId) return;
-
-        const getCookie = (name: string) => {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return parts.pop()?.split(";").shift();
-            return null;
-        };
-
-        const code = getCookie("referral_code");
-        if (code) {
-            fetch("/api/user/sync-referral", {
-                method: "POST",
-                body: JSON.stringify({ userId: user.id, code }),
-                headers: { "Content-Type": "application/json" }
-            }).then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        document.cookie = "referral_code=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                        refreshProfile();
-                    }
-                });
-        }
-    }, [user, refreshProfile]);
-
     // Auto-skip step 1 if username is available and it was an autofill
     useEffect(() => {
-        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting && user?.referralCodeId) {
+        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting) {
             setHasAutoSkipped(true);
+            // Small delay to let the user see the "available" state briefly
             const timer = setTimeout(() => {
                 nextStep();
             }, 800);
             return () => clearTimeout(timer);
         }
-    }, [step, usernameStatus, hasAutofilled, hasAutoSkipped, isSubmitting, user?.referralCodeId]);
+    }, [step, usernameStatus, hasAutofilled, hasAutoSkipped, isSubmitting]);
 
     const toggleTcg = (tcg: string) => {
         setFavoriteTcgs(prev =>
@@ -263,78 +233,9 @@ export default function OnboardingPage() {
                         ))}
                     </div>
                 )}
+
                 <AnimatePresence mode="wait">
-                    {!user?.referralCodeId && user?.email !== 'derekyp9@gmail.com' && (
-                        <motion.div
-                            key="referral-gate"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="space-y-8"
-                        >
-                            <div>
-                                <h2 className="text-3xl font-bold mb-2">Invite Only</h2>
-                                <p className="text-zinc-400">tash. is currently in private beta. Please enter your referral code to continue.</p>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        value={onboardingReferralCode}
-                                        onChange={(e) => {
-                                            setOnboardingReferralCode(e.target.value.toUpperCase());
-                                            setOnboardingRefValid(null);
-                                        }}
-                                        placeholder="REFERRAL CODE"
-                                        className={`w-full bg-zinc-900 border rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 transition-all font-mono uppercase ${onboardingRefValid === false ? "border-red-500/60 focus:ring-red-500" :
-                                            onboardingRefValid === true ? "border-green-500/60 focus:ring-green-500" :
-                                                "border-zinc-800 focus:ring-blue-500"
-                                            }`}
-                                    />
-                                    {isCheckingOnboardingRef && (
-                                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                            <Loader2 size={16} className="animate-spin text-zinc-500" />
-                                        </div>
-                                    )}
-                                </div>
-                                {error && <p className="text-red-400 text-sm">{error}</p>}
-                            </div>
-
-                            <button
-                                onClick={async () => {
-                                    if (!onboardingReferralCode) return;
-                                    setIsCheckingOnboardingRef(true);
-                                    setError(null);
-                                    try {
-                                        const res = await fetch("/api/user/sync-referral", {
-                                            method: "POST",
-                                            body: JSON.stringify({ userId: user?.id, code: onboardingReferralCode }),
-                                            headers: { "Content-Type": "application/json" }
-                                        });
-                                        const data = await res.json();
-                                        if (data.success) {
-                                            setOnboardingRefValid(true);
-                                            refreshProfile();
-                                        } else {
-                                            setOnboardingRefValid(false);
-                                            setError(data.error || "Invalid referral code.");
-                                        }
-                                    } catch (err) {
-                                        setError("Something went wrong. Please try again.");
-                                    } finally {
-                                        setIsCheckingOnboardingRef(false);
-                                    }
-                                }}
-                                disabled={isCheckingOnboardingRef || !onboardingReferralCode}
-                                className="w-full flex items-center justify-center space-x-2 bg-white text-black py-4 rounded-xl font-medium hover:bg-zinc-200 transition-colors disabled:opacity-50"
-                            >
-                                <span>Continue</span>
-                                {isCheckingOnboardingRef ? <Loader2 size={18} className="animate-spin" /> : <ChevronRight className="w-4 h-4" />}
-                            </button>
-                        </motion.div>
-                    )}
-
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 1 && (
+                    {step === 1 && (
                         <motion.div
                             key="step2"
                             initial={{ opacity: 0, x: 50 }}
@@ -410,7 +311,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 2 && (
+                    {step === 2 && (
                         <motion.div
                             key="step3"
                             initial={{ opacity: 0, x: 50 }}
@@ -467,7 +368,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 3 && (
+                    {step === 3 && (
                         <motion.div
                             key="step4"
                             initial={{ opacity: 0, x: 50 }}
@@ -554,6 +455,6 @@ export default function OnboardingPage() {
                     </div>
                 </div>
             </div>
-        </div >
+        </div>
     );
 }

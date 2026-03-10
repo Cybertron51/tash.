@@ -29,7 +29,6 @@ export interface User {
   memberSince: string;
   stripeAccountId: string | null;
   stripeOnboardingComplete: boolean;
-  referralCodeId: string | null;
 }
 
 interface AuthContextValue {
@@ -88,7 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberSince: year,
         stripeAccountId: data.stripe_account_id || null,
         stripeOnboardingComplete: !!data.stripe_onboarding_complete,
-        referralCodeId: data.referral_code_id || null,
       });
     } catch (err) {
       console.error("Failed to fetch user profile", err);
