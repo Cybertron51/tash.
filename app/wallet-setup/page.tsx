@@ -35,12 +35,6 @@ export default function WalletSetupPage() {
         }
     }, [session, router]);
 
-    // If not profile complete, send them to onboarding first
-    useEffect(() => {
-        if (user && !isProfileComplete) {
-            router.push("/onboarding");
-        }
-    }, [user, isProfileComplete, router]);
 
     const handleConnect = async () => {
         if (!user) return;
