@@ -23,6 +23,29 @@ export default function AccountPage() {
     router.push("/");
   }
 
+  async function handleStripeLogin() {
+    if (!session?.access_token) return;
+
+    try {
+      const res = await fetch("/api/connect/login", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to access Stripe dashboard");
+      }
+    } catch (err) {
+      console.error("Stripe login error:", err);
+      alert("Failed to connect to Stripe.");
+    }
+  }
+
   async function handleDeleteAccount() {
     if (!session?.access_token) return;
 
@@ -83,6 +106,12 @@ export default function AccountPage() {
           sub: "Transfer money to your bank",
           href: "/withdraw",
         },
+        ...(user.stripeAccountId ? [{
+          icon: <Shield size={15} />,
+          label: "Financial Wallet",
+          sub: "Manage your Stripe payouts & identity",
+          onClick: handleStripeLogin,
+        }] : []),
         {
           icon: <Key size={15} />,
           label: "Change Password",
@@ -171,30 +200,47 @@ export default function AccountPage() {
             className="overflow-hidden rounded-[12px] border"
             style={{ borderColor: colors.border, background: colors.surface }}
           >
-            {section.items.map((item, i) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="flex items-center gap-3 px-4 py-[14px] transition-colors hover:bg-[#2a2a2a]"
-                style={{ borderBottom: i < section.items.length - 1 ? `1px solid ${colors.border}` : undefined }}
-              >
-                <div
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]"
-                  style={{ background: colors.surfaceOverlay, color: colors.textSecondary }}
-                >
-                  {item.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold" style={{ color: colors.textPrimary }}>
-                    {item.label}
-                  </p>
-                  <p className="text-[11px]" style={{ color: colors.textMuted }}>
-                    {item.sub}
-                  </p>
-                </div>
-                <ChevronRight size={14} style={{ color: colors.textMuted }} />
-              </Link>
-            ))}
+            {section.items.map((item, i) => {
+              const content = (
+                <>
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px]"
+                    style={{ background: colors.surfaceOverlay, color: colors.textSecondary }}
+                  >
+                    {item.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold" style={{ color: colors.textPrimary }}>
+                      {item.label}
+                    </p>
+                    <p className="text-[11px]" style={{ color: colors.textMuted }}>
+                      {item.sub}
+                    </p>
+                  </div>
+                  <ChevronRight size={14} style={{ color: colors.textMuted }} />
+                </>
+              );
+
+              const itemClass = "flex w-full items-center gap-3 px-4 py-[14px] transition-colors hover:bg-[#2a2a2a] text-left";
+              const itemStyle = {
+                borderBottom: i < section.items.length - 1 ? `1px solid ${colors.border}` : undefined,
+                background: "transparent"
+              };
+
+              if (item.href) {
+                return (
+                  <Link key={item.label} href={item.href} className={itemClass} style={itemStyle}>
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <button key={item.label} onClick={item.onClick} className={itemClass} style={itemStyle}>
+                  {content}
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}

@@ -39,10 +39,38 @@ const NAV_LINKS: NavLink[] = [
 // ─────────────────────────────────────────────────────────
 
 function AccountChip() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, session } = useAuth();
   const [open, setOpen] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   if (!user) return null;
+
+  async function handleStripeLogin() {
+    if (!session?.access_token) return;
+    setIsRedirecting(true);
+    setOpen(false);
+
+    try {
+      const res = await fetch("/api/connect/login", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to access Stripe dashboard");
+        setIsRedirecting(false);
+      }
+    } catch (err) {
+      console.error("Stripe login error:", err);
+      alert("Failed to connect to Stripe.");
+      setIsRedirecting(false);
+    }
+  }
 
   const isSetup = !!user.stripeAccountId;
 
@@ -149,17 +177,34 @@ function AccountChip() {
               { label: "Transaction History", href: "/history" },
               { label: "Deposit Funds", href: "/deposit" },
               { label: "Withdraw Funds", href: "/withdraw" },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className="block px-4 py-[9px] text-[13px] transition-colors hover:bg-[#2A2A2A]"
-                style={{ color: colors.textSecondary }}
-              >
-                {item.label}
-              </Link>
-            ))}
+              ...(user.stripeAccountId ? [{ label: "Financial Wallet", onClick: handleStripeLogin }] : []),
+            ].map((item) => {
+              if ('href' in item && item.href) {
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className="block px-4 py-[9px] text-[13px] transition-colors hover:bg-[#2A2A2A]"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              }
+
+              return (
+                <button
+                  key={item.label}
+                  onClick={item.onClick}
+                  disabled={isRedirecting}
+                  className="block w-full text-left px-4 py-[9px] text-[13px] transition-colors hover:bg-[#2A2A2A]"
+                  style={{ color: colors.textSecondary }}
+                >
+                  {isRedirecting && item.label === "Financial Wallet" ? "Connecting..." : item.label}
+                </button>
+              );
+            })}
 
             <div className="my-1 border-t" style={{ borderColor: colors.borderSubtle }} />
 

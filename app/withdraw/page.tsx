@@ -137,6 +137,31 @@ export default function WithdrawPage() {
         }
     }, [session, updateBalance]);
 
+    // ── Dashboard Link ────────────────────────────────────
+    const handleViewDashboard = useCallback(async () => {
+        if (!user) return;
+        setLoading(true); // Reuse loading state for the link generation
+        try {
+            const res = await fetch("/api/connect/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session?.access_token}`
+                },
+            });
+            const data = await res.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                setError(data.error || "Failed to generate login link");
+            }
+        } catch {
+            setError("Failed to connect to dashboard");
+        } finally {
+            setLoading(false);
+        }
+    }, [user, session]);
+
     // ─────────────────────────────────────────────────────────
     // Layout
     // ─────────────────────────────────────────────────────────
@@ -178,6 +203,8 @@ export default function WithdrawPage() {
                         <SuccessStage
                             amount={amount}
                             balance={user?.withdrawableBalance ?? 0}
+                            onViewDashboard={handleViewDashboard}
+                            loading={loading}
                         />
                     )}
                 </VerificationGate>
@@ -516,9 +543,13 @@ function AmountStage({
 function SuccessStage({
     amount,
     balance,
+    onViewDashboard,
+    loading,
 }: {
     amount: number;
     balance: number;
+    onViewDashboard: () => void;
+    loading: boolean;
 }) {
     return (
         <div
@@ -595,6 +626,30 @@ function SuccessStage({
             >
                 Back to Market →
             </Link>
+
+            <button
+                onClick={onViewDashboard}
+                disabled={loading}
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    width: "100%",
+                    maxWidth: 340,
+                    padding: "12px 0",
+                    borderRadius: 12,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    border: `1px solid ${colors.border}`,
+                    background: "transparent",
+                    color: colors.textSecondary,
+                    marginTop: 12,
+                }}
+            >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : "View on Stripe"} <ExternalLink size={14} />
+            </button>
         </div>
     );
 }
