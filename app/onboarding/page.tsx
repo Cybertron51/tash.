@@ -195,6 +195,9 @@ export default function OnboardingPage() {
                 primary_goal: primaryGoals,
             });
 
+            // Refresh the user profile in context so GlobalRouteCheck sees isProfileComplete = true
+            await refreshProfile();
+
             // Success - redirect to dashboard/portfolio
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
