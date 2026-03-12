@@ -642,7 +642,7 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
 
   // Portfolio math
   const holdingsValue = holdings.reduce((sum, { asset }) => sum + asset.price, 0);
-  const cashBalance = user?.cashBalance ?? 24_500;
+  const cashBalance = user?.cashBalance ?? 0;
   const totalValue = cashBalance + holdingsValue;
   const dayGain = holdings.reduce((sum, { asset }) => sum + asset.change, 0);
   const dayGainPct = holdingsValue > 0 ? (dayGain / holdingsValue) * 100 : 0;
