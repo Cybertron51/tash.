@@ -101,11 +101,11 @@ export default function OnboardingPage() {
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
-        if (isProfileComplete) {
+        if (isProfileComplete && (user?.referralCodeId || user?.email === 'derekyp9@gmail.com')) {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
         }
-    }, [isProfileComplete, router, searchParams]);
+    }, [isProfileComplete, router, searchParams, user]);
 
     // Require session, redirect otherwise after short delay
     useEffect(() => {

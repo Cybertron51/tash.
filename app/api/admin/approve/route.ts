@@ -24,13 +24,13 @@ export async function PATCH(req: NextRequest) {
         return NextResponse.json({ error: "holdingId is required" }, { status: 400 });
     }
 
-    const nextStatus = action === "disapprove" ? "disapproved" : "tradable";
+    const nextStatus = action === "disapprove" ? "disapproved" : action === "reset" ? "pending_authentication" : action === "return" ? "pending_authentication" : "tradable";
 
     const { data, error } = await supabaseAdmin
         .from("vault_holdings")
         .update({ status: nextStatus })
         .eq("id", holdingId)
-        .in("status", ["shipped", "pending_authentication"])  // Can process shipped or pending items
+        .in("status", ["shipped", "pending_authentication", "returning"])  // Can process shipped, pending, or returning items
         .select()
         .single();
 
