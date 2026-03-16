@@ -6,92 +6,42 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
-import { SignInModal } from "@/components/auth/SignInModal";
 
+/**
+ * Sign-Up Page — only reachable after the landing-page referral gate
+ * sets the `referral_code` cookie (enforced by middleware.ts).
+ */
 export default function SignUpPage() {
     const router = useRouter();
     const { user, isProfileComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const [referralCode, setReferralCode] = useState("");
-    const [referralValid, setReferralValid] = useState<boolean | null>(null);
-    const [isCheckingReferral, setIsCheckingReferral] = useState(false);
-    const [referralUnlocked, setReferralUnlocked] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
     const [successMsg, setSuccessMsg] = useState("");
-    const [showSignIn, setShowSignIn] = useState(false);
 
-    // Waitlist States
-    const [waitlistEmail, setWaitlistEmail] = useState("");
-    const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "success" | "error">("idle");
-    const [waitlistRes, setWaitlistRes] = useState("");
+    // Read referral code from the cookie set by the landing page
+    const referralCode = typeof document !== "undefined"
+        ? (document.cookie.match(/(?:^|;\s*)referral_code=([^;]*)/)?.[1] ?? "")
+        : "";
 
-    const handleJoinWaitlist = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!waitlistEmail) return;
-        setWaitlistState("loading");
-        try {
-            const res = await fetch("/api/waitlist", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: waitlistEmail }),
-            });
-            if (!res.ok) throw new Error();
-            setWaitlistState("success");
-            setWaitlistRes("Thanks! We'll be in touch soon.");
-            setWaitlistEmail("");
-        } catch {
-            setWaitlistState("error");
-            setWaitlistRes("Failed to join waitlist.");
-            setTimeout(() => {
-                setWaitlistState("idle");
-                setWaitlistRes("");
-            }, 4000);
+    // If cookie is somehow missing (direct nav bypass), redirect to landing
+    useEffect(() => {
+        if (typeof document !== "undefined" && !referralCode) {
+            router.push("/");
         }
-    };
+    }, [referralCode, router]);
 
-    // If user is already logged in, redirect them to onboarding
-    // (Onboarding will redirect them to portfolio if fully onboarded)
+    // Already logged-in user redirect
     useEffect(() => {
         if (user) {
-            if (isProfileComplete) {
-                router.push("/portfolio");
-            } else {
-                router.push("/onboarding");
-            }
+            router.push("/market");
         }
-    }, [user, isProfileComplete, router]);
-
-    const handleReferralCheck = async () => {
-        if (!referralCode) {
-            setErrorMsg("Please enter a referral code.");
-            return;
-        }
-        setIsCheckingReferral(true);
-        setErrorMsg("");
-        try {
-            const res = await fetch(`/api/referral/validate?code=${referralCode}`);
-            const data = await res.json();
-            setReferralValid(data.valid);
-            if (data.valid) {
-                setReferralUnlocked(true);
-                // Also set cookie for Google OAuth flow backup
-                document.cookie = `referral_code=${referralCode}; path=/; max-age=3600; SameSite=Lax`;
-            } else {
-                setErrorMsg("Invalid referral code. Access denied.");
-            }
-        } catch (err) {
-            console.error("Referral validation failed:", err);
-            setErrorMsg("System error. Please try again later.");
-        } finally {
-            setIsCheckingReferral(false);
-        }
-    };
+    }, [user, router]);
 
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!supabase || !referralUnlocked) return;
+        if (!supabase || !referralCode) return;
 
         setLoading(true);
         setErrorMsg("");
@@ -104,7 +54,7 @@ export default function SignUpPage() {
                 options: {
                     data: {
                         name: email.split("@")[0],
-                        referral_code: referralCode
+                        referral_code: referralCode,
                     },
                     emailRedirectTo: `${window.location.origin}/auth/callback`,
                 },
@@ -114,7 +64,7 @@ export default function SignUpPage() {
             if (data?.user && !data.session) {
                 setSuccessMsg("Check your email for a confirmation link to activate your account.");
             } else {
-                router.push("/onboarding");
+                router.push("/market");
                 router.refresh();
             }
         } catch (err: any) {
@@ -125,9 +75,9 @@ export default function SignUpPage() {
     };
 
     const handleGoogleOAuth = async () => {
-        if (!supabase || !referralUnlocked) return;
+        if (!supabase || !referralCode) return;
 
-        // Ensure cookie is set again just in case
+        // Ensure cookie is refreshed
         document.cookie = `referral_code=${referralCode}; path=/; max-age=3600; SameSite=Lax`;
 
         await supabase.auth.signInWithOAuth({
@@ -140,15 +90,12 @@ export default function SignUpPage() {
 
     return (
         <div className="flex min-h-screen bg-black text-white">
-            {/* Left Pane - Visual Graphic Placeholder */}
+            {/* Left Pane - Visual Graphic */}
             <div className="hidden lg:flex flex-1 relative bg-zinc-900 border-r border-zinc-800 items-center justify-center overflow-hidden">
-                {/* Dynamic Background Elements */}
                 <div className="absolute inset-0 z-0">
                     <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-[100px]" />
                     <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-[100px]" />
                 </div>
-
-                {/* Decorative holographic card visual (Placeholder for future asset) */}
                 <div className="relative z-10 w-80 h-[28rem] rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center justify-center group overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-700 z-20 pointer-events-none" />
                     <img src="/mock_jordan.png" alt="Featured Card Asset" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
@@ -161,9 +108,17 @@ export default function SignUpPage() {
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
                         Join <span style={{ color: colors.green }}>tash.</span>
                     </h1>
-                    <p className="text-zinc-400 text-lg mb-8">
+                    <p className="text-zinc-400 text-lg mb-4">
                         The premier portfolio and trading platform for collectors.
                     </p>
+
+                    {/* Verified badge */}
+                    {referralCode && (
+                        <div className="flex items-center space-x-2 text-green-500 bg-green-500/10 py-2 px-3 rounded-lg border border-green-500/20 w-fit mb-6">
+                            <span className="text-xs font-bold uppercase">Invite Verified</span>
+                            <span className="text-xs font-mono">[{referralCode}]</span>
+                        </div>
+                    )}
 
                     <div className="space-y-6">
                         {errorMsg && (
@@ -192,152 +147,58 @@ export default function SignUpPage() {
                             </div>
                         )}
 
-                        {/* STEP 1: Referral Code */}
-                        {!referralUnlocked ? (
-                            <div className="space-y-4 animate-in fade-in duration-500">
-                                <p className="text-sm text-zinc-500 uppercase tracking-widest font-bold">Invite Only</p>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        placeholder="REFERRAL CODE"
-                                        value={referralCode}
-                                        onChange={(e) => {
-                                            setReferralCode(e.target.value.toUpperCase());
-                                            setErrorMsg("");
-                                        }}
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-5 px-5 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono text-lg tracking-widest uppercase"
-                                    />
-                                    {isCheckingReferral && (
-                                        <div className="absolute right-5 top-1/2 -translate-y-1/2">
-                                            <Loader2 size={24} className="animate-spin text-zinc-500" />
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={handleReferralCheck}
-                                    disabled={isCheckingReferral || !referralCode}
-                                    className="w-full flex items-center justify-center space-x-2 py-5 px-6 rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                                    style={{ background: colors.green, color: colors.textInverse }}
-                                >
-                                    <span>Get Access</span>
-                                </button>
-                            </div>
-                        ) : (
-                            /* STEP 2: Sign Up Options */
-                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                <div className="flex items-center space-x-2 text-green-500 bg-green-500/10 py-2 px-3 rounded-lg border border-green-500/20 w-fit">
-                                    <span className="text-xs font-bold uppercase">Invite Verified</span>
-                                    <span className="text-xs font-mono">[{referralCode}]</span>
-                                </div>
+                        <form onSubmit={handleSignUp} className="space-y-4">
+                            <input
+                                type="email"
+                                placeholder="Email address"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
+                            />
 
-                                <form onSubmit={handleSignUp} className="space-y-4">
-                                    <input
-                                        type="email"
-                                        placeholder="Email address"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        required
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
-                                    />
+                            <input
+                                type="password"
+                                placeholder="Password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
+                            />
 
-                                    <input
-                                        type="password"
-                                        placeholder="Password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
-                                    />
-
-                                    <button
-                                        type="submit"
-                                        disabled={loading}
-                                        className="w-full flex items-center justify-center space-x-2 py-4 px-6 rounded-xl font-medium transition-colors disabled:opacity-70"
-                                        style={{ background: colors.green, color: colors.textInverse }}
-                                    >
-                                        {loading ? (
-                                            <Loader2 size={20} className="animate-spin" />
-                                        ) : (
-                                            <span>Sign Up</span>
-                                        )}
-                                    </button>
-                                </form>
-
-                                <div className="flex items-center">
-                                    <div className="flex-1 border-t border-zinc-800"></div>
-                                    <span className="px-4 text-zinc-500 text-xs font-bold uppercase tracking-widest">OR</span>
-                                    <div className="flex-1 border-t border-zinc-800"></div>
-                                </div>
-
-                                <button
-                                    onClick={handleGoogleOAuth}
-                                    className="w-full flex items-center justify-center space-x-3 bg-white text-black py-4 px-6 rounded-xl font-medium hover:bg-zinc-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                                >
-                                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                                    </svg>
-                                    <span>Continue with Google</span>
-                                </button>
-                            </div>
-                        )}
-
-                        {/* STEP 1.5: Waitlist Section (Only shown if referral is not unlocked yet) */}
-                        {!referralUnlocked && (
-                            <div className="mt-8 pt-8 border-t border-zinc-900 animate-in fade-in duration-500">
-                                <p className="text-sm text-zinc-500 uppercase tracking-widest font-bold mb-4">No Code? Join the Waitlist</p>
-
-                                {waitlistState === "success" ? (
-                                    <div
-                                        className="rounded-xl p-4 text-[13px] font-medium text-center"
-                                        style={{
-                                            background: "rgba(34, 197, 94, 0.1)",
-                                            color: colors.green,
-                                            border: `1px solid ${colors.green}44`,
-                                        }}
-                                    >
-                                        {waitlistRes}
-                                    </div>
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full flex items-center justify-center space-x-2 py-4 px-6 rounded-xl font-medium transition-colors disabled:opacity-70"
+                                style={{ background: colors.green, color: colors.textInverse }}
+                            >
+                                {loading ? (
+                                    <Loader2 size={20} className="animate-spin" />
                                 ) : (
-                                    <form onSubmit={handleJoinWaitlist} className="flex space-x-2">
-                                        <input
-                                            type="email"
-                                            required
-                                            placeholder="Enter your email address"
-                                            value={waitlistEmail}
-                                            onChange={(e) => setWaitlistEmail(e.target.value)}
-                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all text-sm"
-                                            disabled={waitlistState === "loading"}
-                                        />
-                                        <button
-                                            type="submit"
-                                            disabled={waitlistState === "loading" || !waitlistEmail}
-                                            className="flex items-center justify-center px-6 rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                                            style={{ background: colors.surfaceRaised, color: colors.textPrimary, border: `1px solid ${colors.border}` }}
-                                        >
-                                            {waitlistState === "loading" ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : "Join"}
-                                        </button>
-                                    </form>
+                                    <span>Sign Up</span>
                                 )}
-                                {waitlistState === "error" && (
-                                    <p className="mt-2 text-xs text-red-400">{waitlistRes}</p>
-                                )}
-                            </div>
-                        )}
-                    </div>
+                            </button>
+                        </form>
 
-                    <p className="mt-8 text-center text-zinc-400">
-                        Already have an account?{" "}
+                        <div className="flex items-center">
+                            <div className="flex-1 border-t border-zinc-800"></div>
+                            <span className="px-4 text-zinc-500 text-xs font-bold uppercase tracking-widest">OR</span>
+                            <div className="flex-1 border-t border-zinc-800"></div>
+                        </div>
+
                         <button
-                            onClick={() => setShowSignIn(true)}
-                            className="font-semibold transition-colors hover:text-white"
-                            style={{ color: colors.green }}
+                            onClick={handleGoogleOAuth}
+                            className="w-full flex items-center justify-center space-x-3 bg-white text-black py-4 px-6 rounded-xl font-medium hover:bg-zinc-200 transition-all hover:scale-[1.02] active:scale-[0.98]"
                         >
-                            Sign in
+                            <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                            </svg>
+                            <span>Continue with Google</span>
                         </button>
-                    </p>
+                    </div>
 
                     <p className="mt-6 text-center text-xs text-zinc-600">
                         By continuing, you agree to tash.&apos;s{" "}
@@ -345,8 +206,6 @@ export default function SignUpPage() {
                     </p>
                 </div>
             </div>
-
-            {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
         </div>
     );
 }

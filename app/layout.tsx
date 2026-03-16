@@ -34,7 +34,7 @@ import { mapDBCardToAssetData } from "@/lib/market-data";
 
 export const metadata: Metadata = {
   title: {
-    default: "tash. — Trading Card Exchange",
+    default: "tash.",
     template: "%s · tash.",
   },
   description:

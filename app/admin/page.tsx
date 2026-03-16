@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
-import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X, Ticket, Plus, Trash2, ArrowLeftRight } from "lucide-react";
+import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X, Ticket, Plus, Trash2, ArrowLeftRight, QrCode, Calendar } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 
@@ -19,11 +19,18 @@ export default function AdminPage() {
     const [usersList, setUsersList] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showSignIn, setShowSignIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<"intake" | "returns" | "users" | "referrals">("intake");
+    const [activeTab, setActiveTab] = useState<"intake" | "returns" | "users" | "referrals" | "qrcodes" | "dropoff_events">("intake");
     const [referralCodes, setReferralCodes] = useState<any[]>([]);
     const [newCode, setNewCode] = useState({ code: "", description: "" });
     const [isCreatingCode, setIsCreatingCode] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({ key: "last_login", direction: "desc" });
+    const [adminQrCodes, setAdminQrCodes] = useState<any[]>([]);
+    const [expandedQr, setExpandedQr] = useState<string | null>(null);
+    const [dropOffEvents, setDropOffEvents] = useState<any[]>([]);
+    const [newEvent, setNewEvent] = useState({ address: "", date: "", time_start: "", time_end: "", description: "" });
+    const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+    const [editingEventId, setEditingEventId] = useState<string | null>(null);
+    const [editEvent, setEditEvent] = useState({ address: "", date: "", time_start: "", time_end: "", description: "" });
 
     const sortedUsers = [...usersList].sort((a, b) => {
         if (!sortConfig) return 0;
@@ -57,6 +64,12 @@ export default function AdminPage() {
                 } else if (activeTab === "referrals") {
                     const data = await apiGet<any[]>(`/api/admin/referrals?t=${Date.now()}`);
                     setReferralCodes(data || []);
+                } else if (activeTab === "qrcodes") {
+                    const data = await apiGet<any[]>(`/api/admin/qr-codes?t=${Date.now()}`);
+                    setAdminQrCodes(data || []);
+                } else if (activeTab === "dropoff_events") {
+                    const data = await apiGet<any[]>(`/api/admin/drop-off-events?t=${Date.now()}`);
+                    setDropOffEvents(data || []);
                 }
             } catch (err: any) {
                 // If it's a 403, fail silently for non-admins so we don't spam alerts.
@@ -110,6 +123,65 @@ export default function AdminPage() {
             setReferralCodes((prev) => prev.filter((c) => c.id !== id));
         } catch (err: any) {
             alert(`Failed to delete code: ${err.message}`);
+        }
+    }
+
+    async function approveQrHolding(holdingId: string, action: "approve" | "disapprove") {
+        try {
+            await apiPatch("/api/admin/qr-codes", { holdingId, action });
+            setAdminQrCodes((prev) =>
+                prev.map((qr: any) => ({
+                    ...qr,
+                    holdings: qr.holdings.map((h: any) =>
+                        h.id === holdingId ? { ...h, status: action === "approve" ? "tradable" : "disapproved" } : h
+                    ),
+                }))
+            );
+        } catch (err: any) {
+            alert(`Failed to ${action}: ${err.message}`);
+        }
+    }
+
+    async function createDropOffEvent() {
+        if (!newEvent.address || !newEvent.date || !newEvent.time_start || !newEvent.time_end) return;
+        setIsCreatingEvent(true);
+        try {
+            const created = await apiPost<any>("/api/admin/drop-off-events", newEvent);
+            setDropOffEvents((prev) => [...prev, created]);
+            setNewEvent({ address: "", date: "", time_start: "", time_end: "", description: "" });
+        } catch (err: any) {
+            alert(`Failed to create event: ${err.message}`);
+        } finally {
+            setIsCreatingEvent(false);
+        }
+    }
+
+    async function updateDropOffEvent(id: string) {
+        try {
+            const updated = await apiPatch<any>("/api/admin/drop-off-events", { id, ...editEvent });
+            setDropOffEvents((prev) => prev.map((e: any) => (e.id === id ? updated : e)));
+            setEditingEventId(null);
+        } catch (err: any) {
+            alert(`Failed to update event: ${err.message}`);
+        }
+    }
+
+    async function deleteDropOffEvent(id: string) {
+        if (!confirm("Delete this drop-off event?")) return;
+        try {
+            await apiDelete<any>("/api/admin/drop-off-events", { id });
+            setDropOffEvents((prev) => prev.filter((e: any) => e.id !== id));
+        } catch (err: any) {
+            alert(`Failed to delete event: ${err.message}`);
+        }
+    }
+
+    async function toggleEventActive(id: string, currentActive: boolean) {
+        try {
+            const updated = await apiPatch<any>("/api/admin/drop-off-events", { id, is_active: !currentActive });
+            setDropOffEvents((prev) => prev.map((e: any) => (e.id === id ? updated : e)));
+        } catch (err: any) {
+            alert(`Failed to toggle event: ${err.message}`);
         }
     }
 
@@ -226,6 +298,46 @@ export default function AdminPage() {
                         }}
                     >
                         <Ticket size={16} /> Referrals
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("qrcodes")}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: activeTab === "qrcodes" ? colors.green : colors.textSecondary,
+                            borderBottom: activeTab === "qrcodes" ? `2px solid ${colors.green}` : "2px solid transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            transform: "translateY(1px)",
+                            transition: "all 0.15s",
+                        }}
+                    >
+                        <QrCode size={16} /> QR Codes
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("dropoff_events")}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: activeTab === "dropoff_events" ? colors.green : colors.textSecondary,
+                            borderBottom: activeTab === "dropoff_events" ? `2px solid ${colors.green}` : "2px solid transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            transform: "translateY(1px)",
+                            transition: "all 0.15s",
+                        }}
+                    >
+                        <Calendar size={16} /> Drop-Off Events
                     </button>
                 </div>
 
@@ -567,7 +679,7 @@ export default function AdminPage() {
                             </div>
                         )}
                     </>
-                ) : (
+                ) : activeTab === "referrals" ? (
                     <>
                         <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24 }}>
                             Manage referral codes and track their usage. Users cannot sign up without a valid code.
@@ -648,7 +760,327 @@ export default function AdminPage() {
                             </div>
                         )}
                     </>
-                )}
+                ) : activeTab === "qrcodes" ? (
+                    <>
+                        <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24 }}>
+                            Review QR code submissions from drop-off users. Approve or disapprove individual cards.
+                        </p>
+                        {adminQrCodes.length === 0 ? (
+                            <div style={{ padding: 48, textAlign: "center", background: colors.surfaceOverlay, border: `1px dashed ${colors.border}`, borderRadius: 16 }}>
+                                <p style={{ fontSize: 14, color: colors.textMuted, fontWeight: 500 }}>No QR code submissions yet.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                {adminQrCodes.map((qr: any) => (
+                                    <div key={qr.id} style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, overflow: "hidden" }}>
+                                        <div
+                                            onClick={() => setExpandedQr(expandedQr === qr.id ? null : qr.id)}
+                                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16, cursor: "pointer" }}
+                                        >
+                                            <div>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                                    <span style={{ fontSize: 16, fontWeight: 700, color: colors.textPrimary }}>{qr.name}</span>
+                                                    <span style={{
+                                                        fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
+                                                        background: qr.type === "drop_off" ? colors.greenMuted : "rgba(59,130,246,0.15)",
+                                                        color: qr.type === "drop_off" ? colors.green : "#3B82F6",
+                                                    }}>
+                                                        {qr.type === "drop_off" ? "Drop-Off" : "Shipping"}
+                                                    </span>
+                                                    <span style={{
+                                                        fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
+                                                        background: qr.status === "completed" ? colors.greenMuted : "rgba(245,200,66,0.15)",
+                                                        color: qr.status === "completed" ? colors.green : "#F5C842",
+                                                    }}>
+                                                        {qr.status}
+                                                    </span>
+                                                </div>
+                                                <p style={{ fontSize: 12, color: colors.textSecondary }}>
+                                                    {qr.user?.name || qr.user?.email || "Unknown user"} · {qr.holdings?.length || 0} cards · {new Date(qr.created_at).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8, color: colors.textMuted }}>
+                                                <span style={{ fontSize: 11, fontFamily: "monospace" }}>{qr.id.slice(0, 8)}...</span>
+                                                {expandedQr === qr.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                            </div>
+                                        </div>
+
+                                        {expandedQr === qr.id && (
+                                            <div style={{ borderTop: `1px solid ${colors.border}`, padding: 16 }}>
+                                                {(qr.holdings || []).length === 0 ? (
+                                                    <p style={{ fontSize: 12, color: colors.textMuted, textAlign: "center", padding: 16 }}>No cards in this group.</p>
+                                                ) : (
+                                                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                                        {(qr.holdings || []).map((h: any) => (
+                                                            <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 14, background: colors.surface, border: `1px solid ${colors.borderSubtle}`, borderRadius: 10, padding: 14 }}>
+                                                                {/* Images */}
+                                                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                                                                    <div>
+                                                                        <p style={{ fontSize: 9, fontWeight: 600, color: colors.textMuted, marginBottom: 2, textTransform: "uppercase" }}>Raw</p>
+                                                                        <div style={{ width: 80, height: 112, borderRadius: 6, background: colors.surfaceOverlay, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                                            {h.raw_image_url ? (
+                                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                                <img src={h.raw_image_url} alt="Raw" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                                                            ) : (
+                                                                                <span style={{ fontSize: 9, color: colors.textMuted }}>N/A</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <p style={{ fontSize: 9, fontWeight: 600, color: colors.gold, marginBottom: 2, textTransform: "uppercase" }}>PSA</p>
+                                                                        <div style={{ width: 80, height: 112, borderRadius: 6, background: colors.surfaceOverlay, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                                                            {h.image_url ? (
+                                                                                // eslint-disable-next-line @next/next/no-img-element
+                                                                                <img src={h.image_url} alt="PSA" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                                                            ) : (
+                                                                                <span style={{ fontSize: 9, color: colors.textMuted }}>N/A</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Card details */}
+                                                                <div style={{ flex: 1, minWidth: 0 }}>
+                                                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                                                        <span style={{ fontSize: 14, fontWeight: 700, color: colors.textPrimary }}>{h.name || "Unknown Card"}</span>
+                                                                        <span style={{
+                                                                            fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
+                                                                            background: h.status === "tradable" ? colors.greenMuted : h.status === "disapproved" ? "rgba(255,59,48,0.12)" : "rgba(245,200,66,0.15)",
+                                                                            color: h.status === "tradable" ? colors.green : h.status === "disapproved" ? colors.red : "#F5C842",
+                                                                        }}>
+                                                                            {h.status}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p style={{ fontSize: 12, color: colors.textSecondary }}>{h.set}</p>
+                                                                    <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                                                                        {h.grade && <span style={{ fontSize: 11, fontWeight: 600, color: colors.green }}>PSA {h.grade}</span>}
+                                                                        {h.cert_number && <span style={{ fontSize: 11, color: colors.textMuted, fontFamily: "monospace" }}>Cert: {h.cert_number}</span>}
+                                                                    </div>
+                                                                    <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                                                                        Value: {formatCurrency(Number(h.acquisition_price || 0))}
+                                                                    </p>
+                                                                </div>
+
+                                                                {/* Actions */}
+                                                                {h.status === "shipped" && (
+                                                                    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
+                                                                        <button
+                                                                            onClick={() => approveQrHolding(h.id, "approve")}
+                                                                            style={{
+                                                                                display: "flex", alignItems: "center", gap: 4, padding: "8px 12px", borderRadius: 6,
+                                                                                background: colors.green, color: colors.textInverse, border: "none",
+                                                                                fontWeight: 700, fontSize: 11, cursor: "pointer",
+                                                                            }}
+                                                                        >
+                                                                            <Check size={12} strokeWidth={3} /> Approve
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => approveQrHolding(h.id, "disapprove")}
+                                                                            style={{
+                                                                                display: "flex", alignItems: "center", gap: 4, padding: "8px 12px", borderRadius: 6,
+                                                                                background: "rgba(239,68,68,0.1)", color: "#EF4444", border: "1px solid rgba(239,68,68,0.2)",
+                                                                                fontWeight: 700, fontSize: 11, cursor: "pointer",
+                                                                            }}
+                                                                        >
+                                                                            <X size={12} strokeWidth={3} /> Reject
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                                {h.status === "tradable" && (
+                                                                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.green }}>Approved</span>
+                                                                )}
+                                                                {h.status === "disapproved" && (
+                                                                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.red }}>Rejected</span>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : activeTab === "dropoff_events" ? (
+                    <>
+                        <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24 }}>
+                            Manage weekly drop-off events. Active events are shown to users on the drop-off page.
+                        </p>
+
+                        {/* Create new event */}
+                        <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+                            <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.textPrimary, marginBottom: 16 }}>Create New Event</h3>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                <input
+                                    placeholder="Address (e.g. 2522 Dwight Way, Berkeley, CA)"
+                                    value={newEvent.address}
+                                    onChange={(e) => setNewEvent({ ...newEvent, address: e.target.value })}
+                                    style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                />
+                                <div style={{ display: "flex", gap: 10 }}>
+                                    <input
+                                        type="date"
+                                        value={newEvent.date}
+                                        onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                    />
+                                    <input
+                                        placeholder="Start (e.g. 2:00 PM)"
+                                        value={newEvent.time_start}
+                                        onChange={(e) => setNewEvent({ ...newEvent, time_start: e.target.value })}
+                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                    />
+                                    <input
+                                        placeholder="End (e.g. 5:00 PM)"
+                                        value={newEvent.time_end}
+                                        onChange={(e) => setNewEvent({ ...newEvent, time_end: e.target.value })}
+                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                    />
+                                </div>
+                                <input
+                                    placeholder="Description (optional)"
+                                    value={newEvent.description}
+                                    onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                                    style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                />
+                                <button
+                                    onClick={createDropOffEvent}
+                                    disabled={!newEvent.address || !newEvent.date || !newEvent.time_start || !newEvent.time_end || isCreatingEvent}
+                                    style={{
+                                        background: colors.green, color: colors.background, border: "none", borderRadius: 8,
+                                        padding: "10px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer",
+                                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                                        opacity: (!newEvent.address || !newEvent.date || !newEvent.time_start || !newEvent.time_end || isCreatingEvent) ? 0.5 : 1,
+                                    }}
+                                >
+                                    {isCreatingEvent ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={14} />}
+                                    Create Event
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Events list */}
+                        {dropOffEvents.length === 0 ? (
+                            <div style={{ padding: 48, textAlign: "center", background: colors.surfaceOverlay, border: `1px dashed ${colors.border}`, borderRadius: 16 }}>
+                                <p style={{ fontSize: 14, color: colors.textMuted, fontWeight: 500 }}>No drop-off events created yet.</p>
+                            </div>
+                        ) : (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                {dropOffEvents.map((evt: any) => (
+                                    <div key={evt.id} style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                                        {editingEventId === evt.id ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                                <input
+                                                    value={editEvent.address}
+                                                    onChange={(e) => setEditEvent({ ...editEvent, address: e.target.value })}
+                                                    style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: colors.textPrimary }}
+                                                />
+                                                <div style={{ display: "flex", gap: 10 }}>
+                                                    <input
+                                                        type="date"
+                                                        value={editEvent.date}
+                                                        onChange={(e) => setEditEvent({ ...editEvent, date: e.target.value })}
+                                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: colors.textPrimary }}
+                                                    />
+                                                    <input
+                                                        value={editEvent.time_start}
+                                                        onChange={(e) => setEditEvent({ ...editEvent, time_start: e.target.value })}
+                                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: colors.textPrimary }}
+                                                    />
+                                                    <input
+                                                        value={editEvent.time_end}
+                                                        onChange={(e) => setEditEvent({ ...editEvent, time_end: e.target.value })}
+                                                        style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: colors.textPrimary }}
+                                                    />
+                                                </div>
+                                                <input
+                                                    value={editEvent.description}
+                                                    onChange={(e) => setEditEvent({ ...editEvent, description: e.target.value })}
+                                                    placeholder="Description"
+                                                    style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "8px 12px", fontSize: 13, color: colors.textPrimary }}
+                                                />
+                                                <div style={{ display: "flex", gap: 8 }}>
+                                                    <button
+                                                        onClick={() => updateDropOffEvent(evt.id)}
+                                                        style={{ background: colors.green, color: colors.textInverse, border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                                                    >
+                                                        Save
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingEventId(null)}
+                                                        style={{ background: "transparent", color: colors.textSecondary, border: `1px solid ${colors.border}`, borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                                <div>
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                                        <span style={{ fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>
+                                                            {new Date(evt.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, textTransform: "uppercase",
+                                                            background: evt.is_active ? colors.greenMuted : "rgba(255,59,48,0.12)",
+                                                            color: evt.is_active ? colors.green : colors.red,
+                                                        }}>
+                                                            {evt.is_active ? "Active" : "Inactive"}
+                                                        </span>
+                                                    </div>
+                                                    <p style={{ fontSize: 13, color: colors.textSecondary }}>{evt.time_start} – {evt.time_end}</p>
+                                                    <p style={{ fontSize: 13, color: colors.textSecondary, marginTop: 2 }}>{evt.address}</p>
+                                                    {evt.description && <p style={{ fontSize: 12, color: colors.textMuted, marginTop: 4, fontStyle: "italic" }}>{evt.description}</p>}
+                                                </div>
+                                                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                                                    <button
+                                                        onClick={() => toggleEventActive(evt.id, evt.is_active)}
+                                                        style={{
+                                                            padding: "6px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                                            background: evt.is_active ? "rgba(255,59,48,0.1)" : colors.greenMuted,
+                                                            color: evt.is_active ? colors.red : colors.green,
+                                                            border: `1px solid ${evt.is_active ? "rgba(255,59,48,0.2)" : `${colors.green}44`}`,
+                                                        }}
+                                                    >
+                                                        {evt.is_active ? "Deactivate" : "Activate"}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingEventId(evt.id);
+                                                            setEditEvent({
+                                                                address: evt.address,
+                                                                date: evt.date,
+                                                                time_start: evt.time_start,
+                                                                time_end: evt.time_end,
+                                                                description: evt.description || "",
+                                                            });
+                                                        }}
+                                                        style={{
+                                                            padding: "6px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                                            background: "transparent", color: colors.textSecondary,
+                                                            border: `1px solid ${colors.border}`,
+                                                        }}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteDropOffEvent(evt.id)}
+                                                        style={{ background: "transparent", border: "none", color: colors.red, cursor: "pointer", opacity: 0.7, padding: 4 }}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </>
+                ) : null}
             </div>
             <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>

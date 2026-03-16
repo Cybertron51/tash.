@@ -11,16 +11,17 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { Search, ChevronRight, CheckCircle, Loader2, Lock, X, Filter } from "lucide-react";
+import { Search, ChevronRight, CheckCircle, Loader2, Lock, X, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { SparklineChart } from "./SparklineChart";
 import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
 
 import { usePortfolio } from "@/lib/portfolio-context";
-import { api } from "@/lib/api";
+import { DualSlider } from "@/components/ui/DualSlider";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -309,7 +310,7 @@ function TradeModal({
                 <input
                   type="number"
                   min={0.01}
-                  step={0.01}
+                  step={1}
                   value={priceStr}
                   onChange={(e) => setPriceStr(e.target.value)}
                   onBlur={() => {
@@ -632,8 +633,23 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
     allowSell: boolean;
   } | null>(null);
 
-  const [sortOrder, setSortOrder] = useState<"none" | "cheapest" | "expensive">("none");
   const [categoryFilter, setCategoryFilter] = useState<"all" | "pokemon" | "sports" | "mtg" | "other">("all");
+  const [priceRange, setPriceRange] = useState<[number, number] | null>(null);
+  const [minVolume, setMinVolume] = useState<number>(0);
+  const [portfolioOpen, setPortfolioOpen] = useState(true);
+
+  const { minPrice, maxPrice } = useMemo(() => {
+    if (assets.length === 0) return { minPrice: 0, maxPrice: 1000 };
+    let min = Infinity;
+    let max = -Infinity;
+    for (const a of assets) {
+      if (a.price < min) min = a.price;
+      if (a.price > max) max = a.price;
+    }
+    return { minPrice: Math.floor(min), maxPrice: Math.ceil(max) };
+  }, [assets]);
+
+  const activePriceRange = priceRange || [minPrice, maxPrice];
 
   // Match vault holdings to live asset prices
   const { holdings: vaultHoldings } = usePortfolio();
@@ -681,15 +697,19 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
       result = result.filter((a) => a.category === categoryFilter);
     }
 
-    // 5. Apply sort
-    if (sortOrder === "cheapest") {
-      result = [...result].sort((a, b) => a.price - b.price);
-    } else if (sortOrder === "expensive") {
-      result = [...result].sort((a, b) => b.price - a.price);
+    // 5. Apply numeric filters
+    if (priceRange) {
+      result = result.filter(a => a.price >= priceRange[0] && a.price <= priceRange[1]);
+    }
+    if (minVolume > 0) {
+      result = result.filter(a => a.volume24h >= minVolume);
     }
 
+    // Default sort by volume desc
+    result = [...result].sort((a, b) => b.volume24h - a.volume24h);
+
     return result;
-  }, [assets, query, portfolioSymbols, showNonTradable, categoryFilter, sortOrder]);
+  }, [assets, query, portfolioSymbols, showNonTradable, categoryFilter, priceRange, minVolume]);
 
   // Keep modal asset price live
   const modalAsset = tradeModal
@@ -746,71 +766,97 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
 
         {/* ── Filters & Sorting ── */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Category Filter */}
-          <div className="flex bg-[#161616] rounded-[8px] p-1 border" style={{ borderColor: colors.border }}>
-            {(["all", "pokemon", "sports", "mtg"] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className="px-3 py-1 text-[11px] font-semibold tracking-wide capitalize transition-colors rounded-[6px]"
-                style={{
-                  background: categoryFilter === cat ? colors.greenMuted : "transparent",
-                  color: categoryFilter === cat ? colors.green : colors.textMuted,
-                }}
-              >
-                {cat === "mtg" ? "MTG" : cat}
-              </button>
-            ))}
-          </div>
+          {/* Category Dropdown */}
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
+            className="rounded-[8px] px-3 py-[7px] text-[12px] font-semibold outline-none cursor-pointer"
+            style={{
+              background: colors.surface,
+              color: categoryFilter === "all" ? colors.textMuted : colors.green,
+              border: `1px solid ${categoryFilter === "all" ? colors.border : colors.green + "40"}`,
+              appearance: "none",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 10px center",
+              paddingRight: 28,
+            }}
+          >
+            <option value="all">All Categories</option>
+            <option value="pokemon">Pokémon</option>
+            <option value="sports">Sports</option>
+            <option value="mtg">MTG</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
 
-          {/* Price Sort */}
-          <div className="flex bg-[#161616] rounded-[8px] p-1 border" style={{ borderColor: colors.border }}>
-            {(["none", "cheapest", "expensive"] as const).map((sort) => (
-              <button
-                key={sort}
-                onClick={() => setSortOrder(sort)}
-                className="px-3 py-1 text-[11px] font-semibold tracking-wide capitalize transition-colors rounded-[6px]"
-                style={{
-                  background: sortOrder === sort ? colors.greenMuted : "transparent",
-                  color: sortOrder === sort ? colors.green : colors.textMuted,
-                }}
-              >
-                {sort === "none" ? "Avg. Vol" : sort}
-              </button>
-            ))}
-          </div>
+        {/* Price Filter */}
+        <div className="flex bg-[#161616] rounded-[8px] px-3 pt-0 pb-[3px] border items-center w-48 shrink-0" style={{ borderColor: colors.border }}>
+          <DualSlider
+            min={minPrice}
+            max={maxPrice}
+            value={activePriceRange}
+            onChange={setPriceRange}
+            formatLabel={(v) => formatCurrency(v, { compact: true })}
+          />
+        </div>
+
+        {/* Volume Filter */}
+        <div className="flex bg-[#161616] rounded-[8px] px-3 py-2 border items-center gap-2 shrink-0 h-full" style={{ borderColor: colors.border }}>
+          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.textMuted }}>Min Vol</span>
+          <input
+            type="number"
+            min={0}
+            value={minVolume || ""}
+            onChange={(e) => setMinVolume(Number(e.target.value))}
+            placeholder="0"
+            className="w-12 bg-transparent text-[12px] font-bold outline-none text-right tabular-nums"
+            style={{ color: colors.textPrimary }}
+          />
         </div>
       </div>
 
       {/* ── Holdings ──────────────────────────────────── */}
-      {!query && (
+      {holdings.length > 0 && (
         <section>
-          <div className="flex items-center justify-between px-5 pb-2">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: colors.textMuted }}>
-              Your Portfolio
-            </h2>
+          <button
+            onClick={() => setPortfolioOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-5 pb-2 cursor-pointer"
+            style={{ background: "none", border: "none" }}
+          >
+            <div className="flex items-center gap-2">
+              <h2 className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: colors.textMuted }}>
+                Your Portfolio
+              </h2>
+              {portfolioOpen
+                ? <ChevronUp size={12} style={{ color: colors.textMuted }} />
+                : <ChevronDown size={12} style={{ color: colors.textMuted }} />
+              }
+            </div>
             <span className="text-[11px]" style={{ color: colors.textMuted }}>
               {holdings.length} positions
             </span>
-          </div>
+          </button>
 
-          <div
-            className="mx-5 mb-6 overflow-hidden rounded-[14px] border"
-            style={{ borderColor: colors.border, background: colors.background }}
-          >
-            {holdings.map(({ holding, asset }) => (
-              <HoldingRow
-                key={holding.id}
-                holding={holding}
-                asset={asset}
-                sparkline={sparklines[asset.symbol] ?? []}
-                flash={flashMap[asset.symbol]}
-                onTrade={() => setTradeModal({ asset, allowSell: true })}
-                onRequestSignIn={onRequestSignIn}
-                isAuthenticated={isAuthenticated}
-              />
-            ))}
-          </div>
+          {portfolioOpen && (
+            <div
+              className="mx-5 mb-6 overflow-hidden rounded-[14px] border"
+              style={{ borderColor: colors.border, background: colors.background }}
+            >
+              {holdings.map(({ holding, asset }) => (
+                <HoldingRow
+                  key={holding.id}
+                  holding={holding}
+                  asset={asset}
+                  sparkline={sparklines[asset.symbol] ?? []}
+                  flash={flashMap[asset.symbol]}
+                  onTrade={() => setTradeModal({ asset, allowSell: true })}
+                  onRequestSignIn={onRequestSignIn}
+                  isAuthenticated={isAuthenticated}
+                />
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -867,7 +913,6 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
           )}
         </div>
       </section>
-
       {/* ── Trade modal ───────────────────────────────── */}
       {tradeModal && modalAsset && (
         <TradeModal

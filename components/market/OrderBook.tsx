@@ -57,8 +57,8 @@ export function OrderBook({ orderBook }: OrderBookProps) {
         <span>Total</span>
       </div>
 
-      {/* Asks — highest at top */}
-      {orderBook.asks.map((ask, i) => (
+      {/* Asks — highest at top, lowest nearest spread. API returns lowest→highest so we reverse for display */}
+      {[...orderBook.asks].reverse().map((ask, i) => (
         <BookRow key={`ask-${i}`} row={ask} side="ask" />
       ))}
 

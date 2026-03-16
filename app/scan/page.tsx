@@ -1158,7 +1158,7 @@ function ResultStage({
                   {isValid && (
                     <div style={{ marginTop: 8 }}>
                       <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, marginBottom: 4, display: "block" }}>
-                        Estimated Value
+                        Starting Price
                       </label>
                       <div style={{ display: "flex", alignItems: "center", background: colors.background, borderRadius: 8, border: `1px solid ${colors.border}`, overflow: "hidden" }}>
                         <span style={{ padding: "8px 0 8px 10px", fontSize: 14, fontWeight: 600, color: colors.textMuted }}>$</span>

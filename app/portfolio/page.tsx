@@ -23,6 +23,7 @@ import { updateVaultHoldingStatus, insertVaultHolding } from "@/lib/db/vault";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
+import { SubmitModal } from "@/components/layout/SubmitModal";
 import { colors, layout, psaGradeColor, zIndex } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
@@ -37,7 +38,7 @@ type ModalState =
   | { type: "list"; holdingId: string; price: string }
   | { type: "withdraw"; holdingId: string }
   | { type: "deposit" }
-  | { type: "ship"; holdingId: string }
+  | { type: "submit"; holdingId: string }
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";
@@ -237,8 +238,8 @@ export default function PortfolioPage() {
     setModalState({ type: "withdraw", holdingId: id });
   }
 
-  function openShipModal(id: string) {
-    setModalState({ type: "ship", holdingId: id });
+  function openSubmitModal(id: string) {
+    setModalState({ type: "submit", holdingId: id });
   }
 
   async function confirmWithdrawal(shippingAddress: string) {
@@ -322,35 +323,6 @@ export default function PortfolioPage() {
       console.error("Failed to remove card:", err);
       alert(err.message || "Failed to remove card. Please try again.");
     }
-  }
-
-  async function confirmShipment() {
-    if (!modalState || modalState.type !== "ship") return;
-    const holding = holdings.find((h) => h.id === modalState.holdingId);
-    if (!holding || !user) return;
-
-    try {
-      await updateVaultHoldingStatus(modalState.holdingId, {
-        status: "shipped",
-      });
-
-      // Update local state after successful DB write
-      updateHolding(modalState.holdingId, { status: "shipped" });
-
-      setActivities((prev) => [...prev, {
-        id: `a${Date.now()}`,
-        type: "shipped",
-        cardName: holding.name,
-        grade: holding.grade,
-        amount: priceMap[holding.symbol] ?? 0,
-        timestamp: new Date(),
-      }]);
-    } catch (err) {
-      console.error("Failed to update shipment status:", err);
-      alert("Failed to update shipment status. Please try again.");
-    }
-
-    setModalState(null);
   }
 
   // ── Modal holding lookup ───────────────────────────────
@@ -732,7 +704,7 @@ export default function PortfolioPage() {
             onOpenListModal={openListModal}
             onCancelListing={handleCancelListing}
             onOpenWithdrawModal={openWithdrawModal}
-            onOpenShipModal={openShipModal}
+            onOpenSubmitModal={openSubmitModal}
             onRemoveCard={handleRemoveCard}
           />
         )}
@@ -756,7 +728,14 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {modalState && modalState.type !== "deposit" && modalHolding && (
+      {modalState?.type === "submit" && (
+        <SubmitModal
+          onClose={() => setModalState(null)}
+          preSelectedHoldingId={modalState.holdingId}
+        />
+      )}
+
+      {modalState && modalState.type !== "deposit" && modalState.type !== "submit" && modalHolding && (
         <div
           style={{ position: "fixed", inset: 0, zIndex: zIndex.modal, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center" }}
           onClick={() => setModalState(null)}
@@ -765,13 +744,7 @@ export default function PortfolioPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, width: 400, padding: 24 }}
           >
-            {modalState.type === "ship" ? (
-              <ShipModal
-                holding={modalHolding}
-                onCancel={() => setModalState(null)}
-                onConfirm={confirmShipment}
-              />
-            ) : modalState.type === "list" ? (
+            {modalState.type === "list" ? (
               <ListModal
                 holding={modalHolding}
                 price={modalState.price}
@@ -1414,11 +1387,11 @@ interface DetailPanelProps {
   onOpenListModal: (id: string) => void;
   onCancelListing: (id: string) => void;
   onOpenWithdrawModal: (id: string) => void;
-  onOpenShipModal: (id: string) => void;
+  onOpenSubmitModal: (id: string) => void;
   onRemoveCard: (id: string) => void;
 }
 
-function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenShipModal, onRemoveCard }: DetailPanelProps) {
+function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenSubmitModal, onRemoveCard }: DetailPanelProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const officialImage = holding.imageUrl || `/cards/${holding.symbol}.svg`;
   const images = holding.rawImageUrl ? [officialImage, holding.rawImageUrl] : [officialImage];
@@ -1541,8 +1514,8 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
           </button>
         )}
         {holding.status === "pending_authentication" && (
-          <button onClick={() => onOpenShipModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
-            Ship to Vault
+          <button onClick={() => onOpenSubmitModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
+            Submit to tash.
           </button>
         )}
         {["shipped", "received", "authenticating", "in_transit"].includes(holding.status) && (
@@ -1890,44 +1863,3 @@ function DepositModal({ assets, onCancel, onConfirm }: DepositModalProps) {
   );
 }
 
-// ─────────────────────────────────────────────────────────
-// Ship to Vault Modal
-// ─────────────────────────────────────────────────────────
-
-interface ShipModalProps {
-  holding: VaultHolding;
-  onCancel: () => void;
-  onConfirm: () => void;
-}
-
-function ShipModal({ holding, onCancel, onConfirm }: ShipModalProps) {
-  return (
-    <>
-      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-        <span style={{ color: colors.textPrimary, fontSize: 15, fontWeight: 700 }}>Ship to Vault</span>
-        <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 4, display: "flex", alignItems: "center" }}><X size={16} /></button>
-      </div>
-      <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20, lineHeight: 1.5 }}>
-        Ship your <strong>{holding.name}</strong> to the Tash Vault for verification. Once received and authenticated, your card will become instantly tradable on the market.
-      </p>
-
-      <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "16px", marginBottom: 24 }}>
-        <p style={{ color: colors.textMuted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Shipping Address</p>
-        <div style={{ background: colors.background, borderRadius: 6, padding: "12px 16px", border: `1px solid ${colors.borderSubtle}` }}>
-          <p style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600, fontFamily: "monospace", margin: 0 }}>TASH VAULT INGESTION</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>ATTN: User {holding.id.slice(-6)}</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>2522 Dwight Way</p>
-          <p style={{ color: colors.textSecondary, fontSize: 13, fontFamily: "monospace", margin: "4px 0 0" }}>Berkeley, CA 94704</p>
-        </div>
-        <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 12, lineHeight: 1.4 }}>
-          Please pack securely with a bubble mailer and tracking number. We recommend insuring packages over $1,000.
-        </p>
-      </div>
-
-      <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, background: "transparent", border: `1px solid ${colors.border}`, borderRadius: 10, color: colors.textSecondary, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer" }}>Close</button>
-        <button onClick={onConfirm} style={{ flex: 1, background: colors.green, border: `1px solid ${colors.green}`, borderRadius: 10, color: colors.textInverse, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer" }}>I Have Shipped It →</button>
-      </div>
-    </>
-  );
-}

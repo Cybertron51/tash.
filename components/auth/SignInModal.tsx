@@ -34,6 +34,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       onClose();
+      router.push("/market");
       router.refresh();
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to authenticate.");
@@ -176,19 +177,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
           Continue with Google
         </button>
 
-        <p className="mt-5 text-center text-[12px]" style={{ color: colors.textMuted }}>
-          Don't have an account?{" "}
-          <button
-            type="button"
-            onClick={() => { onClose(); router.push("/sign-up"); }}
-            className="font-semibold transition-colors hover:text-white"
-            style={{ color: colors.green }}
-          >
-            Sign Up
-          </button>
-        </p>
-
-        <p className="mt-4 text-center text-[11px]" style={{ color: colors.textMuted }}>
+        <p className="mt-5 text-center text-[11px]" style={{ color: colors.textMuted }}>
           By continuing, you agree to tash.&apos;s{" "}
           <span style={{ color: colors.textSecondary, cursor: "pointer" }}>Terms of Service</span>
           {" "}and{" "}

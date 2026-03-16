@@ -63,13 +63,14 @@ export async function GET(req: NextRequest) {
         for (const a of asks) a.depth = a.total / maxTotal;
     }
 
-    asks.reverse();
+    // Asks remain sorted lowest→highest. asks[0] = best ask (lowest price).
+    // The OrderBook display component will render them reversed (highest at top).
 
     // Spread
     let spread = 0;
     let spreadPct = 0;
     if (asks.length > 0 && bids.length > 0) {
-        const lowestAsk = asks[asks.length - 1].price;
+        const lowestAsk = asks[0].price;
         const highestBid = bids[0].price;
         spread = Math.max(0, lowestAsk - highestBid);
         if (lowestAsk > 0) spreadPct = spread / lowestAsk;

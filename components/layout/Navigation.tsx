@@ -11,12 +11,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart2, TrendingUp, Search, ChevronDown, Camera, User } from "lucide-react";
+import { BarChart2, TrendingUp, Search, ChevronDown, Camera, User, Package } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { CommandMenu } from "@/components/layout/CommandMenu";
+import { SubmitModal } from "@/components/layout/SubmitModal";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 // ─────────────────────────────────────────────────────────
@@ -238,6 +239,7 @@ export function Navigation() {
   const { isAuthenticated } = useAuth();
   const [showSignIn, setShowSignIn] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
   const isMobile = useIsMobile();
 
   return (
@@ -319,6 +321,16 @@ export function Navigation() {
               >
                 <Camera size={20} strokeWidth={pathname.startsWith("/scan") ? 2.5 : 2} />
               </Link>
+              {isAuthenticated && (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  className="p-1 transition-colors"
+                  style={{ color: (pathname.startsWith("/drop-off") || pathname.startsWith("/shipping")) ? colors.green : colors.textSecondary, background: "none", border: "none", cursor: "pointer" }}
+                  aria-label="Submit to tash."
+                >
+                  <Package size={20} strokeWidth={(pathname.startsWith("/drop-off") || pathname.startsWith("/shipping")) ? 2.5 : 2} />
+                </button>
+              )}
               <Link
                 href="/portfolio"
                 className="p-1 transition-colors"
@@ -348,6 +360,26 @@ export function Navigation() {
               <Camera size={15} strokeWidth={2} />
               <span>Upload</span>
             </Link>
+          )}
+
+          {/* Submit to tash. (Desktop) */}
+          {!isMobile && isAuthenticated && (
+            <button
+              onClick={() => setShowSubmitModal(true)}
+              className={cn(
+                "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
+                "text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]",
+              )}
+              style={{
+                background: colors.green,
+                color: colors.textInverse,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              <Package size={15} strokeWidth={2} />
+              <span>Submit to tash.</span>
+            </button>
           )}
 
           {/* Search */}
@@ -411,6 +443,7 @@ export function Navigation() {
 
 
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
+      {showSubmitModal && <SubmitModal onClose={() => setShowSubmitModal(false)} />}
       <CommandMenu open={showSearch} setOpen={setShowSearch} />
     </>
   );
