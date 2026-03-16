@@ -256,14 +256,7 @@ export function Navigation() {
       >
         {/* ── Wordmark ─────────────────────────────── */}
         <Link href="/market" className="flex items-center gap-2 no-underline" aria-label="tash. home">
-          <div
-            className="flex items-center justify-center rounded-[8px]"
-            style={{ width: 28, height: 28, backgroundColor: colors.green }}
-          >
-            <span className="text-[14px] font-black" style={{ color: colors.textInverse }}>
-              t
-            </span>
-          </div>
+          <img src="/icon.svg" alt="tash." width={28} height={28} className="rounded-[6px]" />
           <span
             className="text-[18px] font-bold tracking-tight"
             style={{ color: colors.textPrimary, letterSpacing: "-0.03em" }}
