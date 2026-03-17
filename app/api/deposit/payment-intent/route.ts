@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       amountCents > MAX_CENTS
     ) {
       return NextResponse.json(
-        { error: "Amount must be between $10 and $10,000" },
+        { error: "Amount must be between $1 and $10,000" },
         { status: 400 }
       );
     }

@@ -5,22 +5,29 @@
  *
  * 3-stage flow:
  *   1. amount  — Preset pills + custom input
- *   2. payment — Stripe Payment Element (Apple Pay / card)
+ *   2. payment — Stripe Payment Element (card / Apple Pay / Google Pay)
  *   3. success — Balance confirmed, link to trading
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useSearchParams, useRouter } from "next/navigation";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import { CheckCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
-import { VerificationGate } from "@/components/auth/VerificationGate";
 
 // ─────────────────────────────────────────────────────────
-// Types
+// Stripe.js singleton
+// ─────────────────────────────────────────────────────────
+
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+);
+
+// ─────────────────────────────────────────────────────────
+// Types & Constants
 // ─────────────────────────────────────────────────────────
 
 type Stage = "amount" | "payment" | "success";
@@ -29,93 +36,83 @@ const PRESETS = [50, 100, 250, 500, 1_000, 2_500];
 const MIN = 1;
 const MAX = 10_000;
 
+const ELEMENTS_APPEARANCE = {
+  theme: "night" as const,
+  variables: {
+    colorPrimary: colors.green,
+    colorBackground: colors.surface,
+    colorText: colors.textPrimary,
+    colorTextSecondary: colors.textSecondary,
+    colorTextPlaceholder: colors.textMuted,
+    colorDanger: colors.red,
+    borderRadius: "10px",
+    fontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif',
+    fontSizeBase: "14px",
+    spacingUnit: "4px",
+    spacingGridRow: "16px",
+  },
+  rules: {
+    ".Input": {
+      border: `1px solid ${colors.border}`,
+      boxShadow: "none",
+      padding: "12px 14px",
+    },
+    ".Input:focus": {
+      border: `1px solid ${colors.green}`,
+      boxShadow: "none",
+    },
+    ".Label": {
+      fontWeight: "600",
+      fontSize: "12px",
+      textTransform: "uppercase" as const,
+      letterSpacing: "0.04em",
+      color: colors.textSecondary,
+    },
+    ".Tab": {
+      border: `1px solid ${colors.border}`,
+      backgroundColor: colors.surface,
+    },
+    ".Tab--selected": {
+      border: `1px solid ${colors.green}`,
+      backgroundColor: colors.greenMuted,
+    },
+  },
+};
+
 // ─────────────────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────────────────
 
 export default function DepositPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
   const [stage, setStage] = useState<Stage>("amount");
   const [amount, setAmount] = useState<number | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { user, refreshProfile } = useAuth();
 
-  // Detect success from URL params
-  useEffect(() => {
-    const success = searchParams.get("success");
-    const amt = searchParams.get("amount");
-    const canceled = searchParams.get("canceled");
-
-    if (success === "true" && amt) {
-      const parsedAmt = parseFloat(amt);
-      setAmount(parsedAmt);
-      setStage("success");
-
-      // Fallback Sync: If webhook fails due to tunnel issues, sync directly
-      const sessionId = localStorage.getItem("last_deposit_session");
-      if (sessionId && supabase) {
-        // Get a fresh access token (session from context may be stale after Stripe redirect)
-        supabase.auth.getSession().then(({ data: { session: freshSession } }) => {
-          if (!freshSession?.access_token) {
-            console.error("[deposit] No session available for fallback sync");
-            refreshProfile();
-            return;
-          }
-          fetch("/api/deposit/sync", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${freshSession.access_token}`
-            },
-            body: JSON.stringify({ sessionId })
-          })
-            .then(res => res.json())
-            .then(data => {
-              if (data.synced) refreshProfile();
-              localStorage.removeItem("last_deposit_session");
-            })
-            .catch(console.error);
-        });
-      } else {
-        refreshProfile();
-      }
-
-      // Clean up URL params
-      router.replace("/deposit");
-    } else if (canceled === "true") {
-      setError("Payment canceled. You can try again below.");
-      router.replace("/deposit");
-    }
-  }, [searchParams, router, refreshProfile]);
-
-  // ── Amount → Checkout Redirect ─────────────────────
+  // Amount → create PaymentIntent → show payment form
   const handleContinue = useCallback(async (amt: number) => {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/deposit/checkout", {
+      const res = await fetch("/api/deposit/payment-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amountCents: Math.round(amt * 100),
           userId: user?.id,
-          email: user?.email,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to initialize checkout");
+        setError(data.error ?? "Failed to initialize payment");
         return;
       }
-      // Save session ID for fallback sync
-      if (data.sessionId) {
-        localStorage.setItem("last_deposit_session", data.sessionId);
-      }
-      // Redirect to Stripe Checkout
-      window.location.href = data.url;
+      setAmount(amt);
+      setClientSecret(data.clientSecret);
+      setStage("payment");
     } catch {
       setError("Network error — please try again");
     } finally {
@@ -123,9 +120,16 @@ export default function DepositPage() {
     }
   }, [user]);
 
-  // ─────────────────────────────────────────────────────────
-  // Layout
-  // ─────────────────────────────────────────────────────────
+  const handlePaymentSuccess = useCallback(() => {
+    setStage("success");
+    setTimeout(() => refreshProfile(), 1500);
+  }, [refreshProfile]);
+
+  const handleBack = useCallback(() => {
+    setStage("amount");
+    setClientSecret(null);
+    setError(null);
+  }, []);
 
   // ─────────────────────────────────────────────────────────
   // Layout
@@ -148,7 +152,6 @@ export default function DepositPage() {
   return (
     <div style={pageStyle}>
       <div style={cardStyle}>
-        <VerificationGate>
           {stage === "amount" && (
             <AmountStage
               onContinue={handleContinue}
@@ -157,18 +160,34 @@ export default function DepositPage() {
             />
           )}
 
+          {stage === "payment" && clientSecret && amount != null && (
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret,
+                appearance: ELEMENTS_APPEARANCE,
+              }}
+            >
+              <PaymentStage
+                amount={amount}
+                onSuccess={handlePaymentSuccess}
+                onBack={handleBack}
+              />
+            </Elements>
+          )}
+
           {stage === "success" && amount != null && (
             <SuccessStage
               amount={amount}
               balance={user?.cashBalance ?? 0}
               onDepositMore={() => {
                 setAmount(null);
+                setClientSecret(null);
                 setError(null);
                 setStage("amount");
               }}
             />
           )}
-        </VerificationGate>
       </div>
     </div>
   );
@@ -401,6 +420,163 @@ function AmountStage({
           <>Continue {amt != null && amt >= MIN ? `— ${formatCurrency(amt)}` : ""} →</>
         )}
       </button>
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Stage 2 — Payment (Stripe Elements)
+// ─────────────────────────────────────────────────────────
+
+function PaymentStage({
+  amount,
+  onSuccess,
+  onBack,
+}: {
+  amount: number;
+  onSuccess: () => void;
+  onBack: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setError(null);
+    setLoading(true);
+
+    const { error: submitError } = await elements.submit();
+    if (submitError) {
+      setError(submitError.message ?? "Validation failed");
+      setLoading(false);
+      return;
+    }
+
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: window.location.origin + "/deposit",
+      },
+      redirect: "if_required",
+    });
+
+    if (confirmError) {
+      setError(confirmError.message ?? "Payment failed — please try again");
+      setLoading(false);
+      return;
+    }
+
+    if (paymentIntent?.status === "succeeded") {
+      onSuccess();
+    } else {
+      setError("Payment was not completed. Please try again.");
+      setLoading(false);
+    }
+  }, [stripe, elements, onSuccess]);
+
+  return (
+    <>
+      {/* Header with back */}
+      <div style={{ paddingTop: 32, paddingBottom: 24 }}>
+        <button
+          onClick={onBack}
+          disabled={loading}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            background: "none",
+            border: "none",
+            color: colors.textSecondary,
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: loading ? "not-allowed" : "pointer",
+            padding: 0,
+            marginBottom: 16,
+          }}
+        >
+          <ArrowLeft size={14} /> Change amount
+        </button>
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: colors.textPrimary,
+            letterSpacing: "-0.02em",
+            margin: 0,
+          }}
+        >
+          Pay {formatCurrency(amount)}
+        </h1>
+        <p style={{ fontSize: 13, color: colors.textMuted, margin: "4px 0 0" }}>
+          Enter your card details below
+        </p>
+      </div>
+
+      {/* Error banner */}
+      {error && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "rgba(255,80,0,0.1)",
+            border: `1px solid ${colors.red}44`,
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 16,
+          }}
+        >
+          <AlertCircle size={14} style={{ color: colors.red, flexShrink: 0 }} />
+          <span style={{ fontSize: 13, color: colors.red }}>{error}</span>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 24 }}>
+          <PaymentElement
+            options={{
+              layout: "tabs",
+            }}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={!stripe || loading}
+          style={{
+            width: "100%",
+            padding: "14px 0",
+            borderRadius: 12,
+            fontSize: 15,
+            fontWeight: 700,
+            cursor: !stripe || loading ? "not-allowed" : "pointer",
+            border: "none",
+            background: !stripe || loading ? colors.surface : colors.green,
+            color: !stripe || loading ? colors.textMuted : colors.textInverse,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+            transition: "all 0.15s",
+          }}
+        >
+          {loading ? (
+            <>
+              <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />
+              Processing…
+            </>
+          ) : (
+            <>Deposit {formatCurrency(amount)} →</>
+          )}
+        </button>
+      </form>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </>

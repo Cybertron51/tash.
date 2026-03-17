@@ -75,7 +75,7 @@ export default function WalletSetupPage() {
                     <div>
                         <h1 className="text-3xl font-bold mb-4">Connect your Wallet</h1>
                         <p className="text-zinc-400 text-lg leading-relaxed">
-                            To buy, sell, and withdraw funds on tash., you need to connect your financial account via Stripe.
+                            To withdraw funds on tash., you need to connect your financial account via Stripe.
                             This ensures secure, instant settlements.
                         </p>
                     </div>
