@@ -904,8 +904,18 @@ export default function AdminPage() {
                                                     </span>
                                                     <span style={{
                                                         fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, textTransform: "uppercase",
-                                                        background: qr.status === "completed" ? colors.greenMuted : "rgba(245,200,66,0.15)",
-                                                        color: qr.status === "completed" ? colors.green : "#F5C842",
+                                                        background:
+                                                            qr.status === "completed"
+                                                                ? colors.greenMuted
+                                                                : qr.status === "received"
+                                                                    ? "rgba(59,130,246,0.15)"
+                                                                    : "rgba(245,200,66,0.15)",
+                                                        color:
+                                                            qr.status === "completed"
+                                                                ? colors.green
+                                                                : qr.status === "received"
+                                                                    ? "#3B82F6"
+                                                                    : "#F5C842",
                                                     }}>
                                                         {qr.status}
                                                     </span>
