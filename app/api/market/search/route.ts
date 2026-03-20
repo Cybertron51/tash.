@@ -26,6 +26,7 @@ export async function GET(req: NextRequest) {
       prices (price, change_24h, change_pct_24h)
     `)
         .ilike("name", `%${q}%`)
+        .order("population", { ascending: false, nullsFirst: false })
         .limit(limit);
 
     if (error) {

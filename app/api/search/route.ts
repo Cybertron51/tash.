@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
                     price
                 )
             `)
-            .or(`name.ilike.${searchTerm},symbol.ilike.${searchTerm},set_name.ilike.${searchTerm}`)
+            .or(`name.ilike."${searchTerm}",symbol.ilike."${searchTerm}",set_name.ilike."${searchTerm}"`)
+            .order("population", { ascending: false, nullsFirst: false })
             .limit(10);
 
         if (error) throw error;
