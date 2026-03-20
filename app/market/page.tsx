@@ -443,7 +443,7 @@ function MarketPageContent() {
                 style={{ border: `1px solid ${colors.borderSubtle}` }}
               />
               <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline" style={{ color: colors.textMuted }}>
-                Show all
+                Show not for sale
               </span>
             </label>
             {isMobile && (

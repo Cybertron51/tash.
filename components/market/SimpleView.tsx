@@ -879,7 +879,7 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
                 style={{ border: `1px solid ${colors.borderSubtle}` }}
               />
               <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                Show all
+                Show not for sale
               </span>
             </label>
           </div>
