@@ -476,19 +476,6 @@ export default function AdminPage() {
 
                                         {/* Images Grid */}
                                         <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
-                                            {/* User's Raw Scan */}
-                                            <div>
-                                                <p style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Raw Upload</p>
-                                                <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                                    {item.raw_image_url ? (
-                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                        <img src={item.raw_image_url} alt="Raw Scan" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                                                    ) : (
-                                                        <p style={{ fontSize: 11, color: colors.textMuted }}>No Image</p>
-                                                    )}
-                                                </div>
-                                            </div>
-
                                             {/* PSA Official Image */}
                                             <div>
                                                 <p style={{ fontSize: 11, fontWeight: 600, color: colors.gold, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>PSA Record</p>
