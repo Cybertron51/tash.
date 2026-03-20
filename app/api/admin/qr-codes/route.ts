@@ -142,7 +142,7 @@ export async function PATCH(req: NextRequest) {
         .from("vault_holdings")
         .update({ status: nextStatus })
         .eq("id", holdingId)
-        .in("status", ["shipped", "drop_off", "pending_authentication"])
+        .in("status", ["shipped", "drop_off", "pending_authentication", "received"])
         .select()
         .single();
 

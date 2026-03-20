@@ -297,13 +297,13 @@ function CheckInContent() {
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {batch.holdings.map((h) => {
-                        const isShipped = h.status === "shipped";
+                        const isApprovable = ["shipped", "received", "pending_authentication", "drop_off"].includes(h.status);
                         return (
                             <div
                                 key={h.id}
                                 style={{
                                     background: colors.surface,
-                                    border: `1px solid ${isShipped ? colors.border : statusColor(h.status) + "44"}`,
+                                    border: `1px solid ${isApprovable ? colors.border : statusColor(h.status) + "44"}`,
                                     borderRadius: 14,
                                     padding: 16,
                                     transition: "border-color 0.2s",
@@ -370,7 +370,7 @@ function CheckInContent() {
                                 </div>
 
                                 {/* Action buttons */}
-                                {isShipped && (
+                                {isApprovable && (
                                     <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
                                         <button
                                             onClick={() => handleHolding(h.id, "approve")}
