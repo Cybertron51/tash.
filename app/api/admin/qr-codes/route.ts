@@ -127,7 +127,7 @@ export async function PATCH(req: NextRequest) {
                 .from("vault_holdings")
                 .update({ status: "received" })
                 .in("id", holdingIds)
-                .eq("status", "drop_off");
+                .in("status", ["drop_off", "shipped", "pending_authentication"]);
         }
 
         return NextResponse.json(data);

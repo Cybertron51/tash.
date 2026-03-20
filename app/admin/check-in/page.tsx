@@ -78,7 +78,18 @@ function CheckInContent() {
         setReceivingBatch(true);
         try {
             await apiPatch("/api/admin/qr-codes", { qrCodeId: batch.id, action: "receive" });
-            setBatch((prev) => prev ? { ...prev, status: "received" } : prev);
+            setBatch((prev) => {
+                if (!prev) return prev;
+                return {
+                    ...prev,
+                    status: "received",
+                    holdings: prev.holdings.map((h) =>
+                        h.status === "drop_off" || h.status === "shipped" || h.status === "pending_authentication"
+                            ? { ...h, status: "received" }
+                            : h
+                    ),
+                };
+            });
         } catch (err: any) {
             alert(`Failed to mark as received: ${err.message}`);
         } finally {
