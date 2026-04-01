@@ -5,10 +5,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   anchorSeriesTerminalToCatalog,
+  applyMarketChartDisplayShape,
   buildTradeBucketedSeries,
   clampPriceToAnchorBand,
   RANGE_CONFIGS,
   SPARKLINE,
+  type MarketChartShapeRange,
   type TimeRange,
 } from "@/lib/chart-series";
 
@@ -193,6 +195,8 @@ export async function buildSymbolTradeHistory(
 
   let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
   series = anchorSeriesTerminalToCatalog(series, anchorPrice);
+  const shapeRange: MarketChartShapeRange = options?.sparkline ? "sparkline" : range;
+  series = applyMarketChartDisplayShape(series, anchorPrice, symbol, shapeRange);
 
   return series.map((p) => ({
     recorded_at: new Date(p.time).toISOString(),
@@ -311,6 +315,8 @@ export async function buildBatchMarketHistory(
 
     let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
     series = anchorSeriesTerminalToCatalog(series, anchorPrice);
+    const shapeRange: MarketChartShapeRange = options?.sparkline ? "sparkline" : range;
+    series = applyMarketChartDisplayShape(series, anchorPrice, sym, shapeRange);
 
     out[id] = series.map((p) => ({
       recorded_at: new Date(p.time).toISOString(),

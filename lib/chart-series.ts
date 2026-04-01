@@ -204,6 +204,78 @@ export function anchorSeriesTerminalToCatalog(points: ChartPoint[], anchorPrice:
   return out;
 }
 
+/** Used only for market chart display shape (sparklines use `sparkline`). */
+export type MarketChartShapeRange = TimeRange | "sparkline";
+
+/**
+ * Display-only: make 1D vs 1W (etc.) visually distinct when trade forward-fill would
+ * otherwise look identical. Pins first/last buckets so window endpoints stay aligned;
+ * does not affect `batchSevenDayChangeFromTrades` (metrics use raw bucketed series).
+ */
+export function applyMarketChartDisplayShape(
+  points: ChartPoint[],
+  anchorPrice: number,
+  seedKey: string,
+  shapeRange: MarketChartShapeRange
+): ChartPoint[] {
+  if (points.length < 3 || !(anchorPrice > 0)) {
+    return [...points];
+  }
+
+  const lo = anchorPrice * (1 - TRADE_DEVIATION_CLAMP);
+  const hi = anchorPrice * (1 + TRADE_DEVIATION_CLAMP);
+
+  const vals = points.map((p) => p.price);
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  const rawSpread = (rawMax - rawMin) / anchorPrice;
+
+  const cycles: Record<MarketChartShapeRange, number> = {
+    /** Subtle: avoid busy intraday zig-zag; still distinct from 1W. */
+    "1D": 0.95,
+    "1W": 2.05,
+    "1M": 1.32,
+    "3M": 0.92,
+    "1Y": 0.58,
+    sparkline: 1.15,
+  };
+
+  const relAmp: Record<MarketChartShapeRange, number> = {
+    "1D": 0.0022,
+    "1W": 0.0095,
+    "1M": 0.0105,
+    "3M": 0.0115,
+    "1Y": 0.0125,
+    sparkline: 0.0026,
+  };
+
+  const c = cycles[shapeRange];
+  const baseAmp = relAmp[shapeRange];
+  const h = stringHash(`${seedKey}|${shapeRange}`);
+  const phase1 = ((h % 1000) / 1000) * Math.PI * 2;
+  const phase2 = (((h >>> 12) % 1000) / 1000) * Math.PI * 2;
+
+  const hasMeaningfulSpread = rawSpread >= 0.012;
+  const dampen = hasMeaningfulSpread ? 0.35 : 1;
+
+  const n = points.length;
+  const out = points.map((p, i) => {
+    if (i === 0 || i === n - 1) {
+      return { ...p };
+    }
+    const u = i / (n - 1);
+    const s1 = Math.sin(u * Math.PI * 2 * c + phase1);
+    const s2 = Math.sin(u * Math.PI * 2 * c * 1.31 + phase2);
+    const bump = (s1 * 0.62 + s2 * 0.38) * baseAmp * dampen;
+    const v = p.price * (1 + bump);
+    return { time: p.time, price: Math.max(lo, Math.min(hi, v)) };
+  });
+
+  out[0] = { ...points[0]! };
+  out[n - 1] = { ...points[n - 1]! };
+  return out;
+}
+
 /**
  * Blend trade path with a slow deterministic offset around `anchorPrice`, stepped intraday
  * (few moves per day), hard caps vs anchor, then enforce min/max spread for the active range.
