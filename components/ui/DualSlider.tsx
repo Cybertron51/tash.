@@ -10,6 +10,25 @@ interface DualSliderProps {
     formatLabel?: (val: number) => string;
 }
 
+/**
+ * Minimum space between thumbs so they stay grabbable.
+ * Uses ~10.5% of the slider span (see “105” buffer request), with a small floor.
+ */
+function minThumbGap(min: number, max: number): number {
+    if (max <= min) return 0;
+    const span = max - min;
+    return Math.max(span * 0.105, 0.01);
+}
+
+function healCollapsedRange(min: number, max: number, a: number, b: number, gap: number): [number, number] {
+    let lo = Math.min(a, b);
+    let hi = Math.max(a, b);
+    if (hi - lo >= gap) return [lo, hi];
+    lo = Math.max(min, Math.min(lo, max - gap));
+    hi = Math.min(max, lo + gap);
+    return [lo, hi];
+}
+
 export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.toString() }: DualSliderProps) {
     const trackRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState<0 | 1 | null>(null);
@@ -21,16 +40,26 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
     const onChangeRef = useRef(onChange);
 
     useEffect(() => {
+        onChangeRef.current = onChange;
+    }, [onChange]);
+
+    /** Fix [x,x] or near-equal ranges from parent so thumbs are never stacked. */
+    useEffect(() => {
+        if (max <= min || isDragging !== null) return;
+        const gap = minThumbGap(min, max);
+        const [lo, hi] = healCollapsedRange(min, max, value[0], value[1], gap);
+        if (Math.abs(lo - value[0]) > 1e-9 || Math.abs(hi - value[1]) > 1e-9) {
+            onChangeRef.current([lo, hi]);
+        }
+    }, [min, max, value[0], value[1], isDragging]);
+
+    useEffect(() => {
         liveValueRef.current = value;
     }, [value]);
 
     useEffect(() => {
         isDraggingRef.current = isDragging;
     }, [isDragging]);
-
-    useEffect(() => {
-        onChangeRef.current = onChange;
-    }, [onChange]);
 
     useEffect(() => {
         return () => {
@@ -56,11 +85,12 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
             const newValue = min + percent * (max - min);
 
             const nextValue = [...liveValueRef.current] as [number, number];
+            const gap = minThumbGap(min, max);
 
             if (draggingIdx === 0) {
-                nextValue[0] = Math.min(newValue, nextValue[1]);
+                nextValue[0] = Math.min(newValue, nextValue[1] - gap);
             } else {
-                nextValue[1] = Math.max(newValue, nextValue[0]);
+                nextValue[1] = Math.max(newValue, nextValue[0] + gap);
             }
 
             liveValueRef.current = nextValue;
@@ -117,7 +147,11 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
 
                 {/* Thumb 0 */}
                 <div
-                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(0); }}
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDragging(0);
+                    }}
                     className="absolute w-4 h-4 rounded-full -top-[5px] -ml-2 transition-transform shadow-md touch-none"
                     style={{
                         background: colors.textPrimary,
@@ -130,7 +164,11 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
 
                 {/* Thumb 1 */}
                 <div
-                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(1); }}
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setIsDragging(1);
+                    }}
                     className="absolute w-4 h-4 rounded-full -top-[5px] -ml-2 transition-transform shadow-md touch-none"
                     style={{
                         background: colors.textPrimary,

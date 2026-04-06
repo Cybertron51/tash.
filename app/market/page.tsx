@@ -610,53 +610,63 @@ function MarketPageContent() {
           </div>
         </div>
 
-        {/* ── Filters ── */}
-        <div className="flex flex-col gap-2 border-b px-4 py-3" style={{ borderColor: colors.borderSubtle }}>
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-            className="w-full rounded-[8px] px-3 py-[7px] text-[11px] font-bold uppercase tracking-widest outline-none cursor-pointer"
-            style={{
-              background: colors.surface,
-              color: categoryFilter === "all" ? colors.textMuted : colors.green,
-              border: `1px solid ${categoryFilter === "all" ? colors.border : colors.green + "40"}`,
-              appearance: "none",
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 10px center",
-              paddingRight: 28,
-            }}
+        {/* ── Filters (equal-width row) ── */}
+        <div
+          className="flex flex-row gap-2 border-b px-3 py-3 items-stretch"
+          style={{ borderColor: colors.borderSubtle }}
+        >
+          <div className="flex-1 basis-0 min-w-0 flex items-stretch">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
+              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer"
+              style={{
+                background: colors.surface,
+                color: categoryFilter === "all" ? colors.textMuted : colors.green,
+                border: `1px solid ${categoryFilter === "all" ? colors.border : colors.green + "40"}`,
+                appearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 8px center",
+                paddingRight: 26,
+              }}
+            >
+              <option value="all">All Categories</option>
+              <option value="pokemon">Pokémon</option>
+              <option value="sports">Sports</option>
+              <option value="mtg">MTG</option>
+            </select>
+          </div>
+
+          <div
+            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-1 pt-0 pb-[2px] border items-center"
+            style={{ borderColor: colors.border }}
           >
-            <option value="all">All Categories</option>
-            <option value="pokemon">Pokémon</option>
-            <option value="sports">Sports</option>
-            <option value="mtg">MTG</option>
-          </select>
+            <DualSlider
+              min={minPrice}
+              max={maxPrice}
+              value={activePriceRange}
+              onChange={setPriceRange}
+              formatLabel={(v) => formatCurrency(v, { compact: true })}
+            />
+          </div>
 
-          {/* Numeric Filters */}
-          <div className="flex flex-col gap-3 pt-2 pb-1">
-            <div className="flex bg-[#161616] rounded-[8px] px-3 pt-0 pb-[3px] border items-center w-full" style={{ borderColor: colors.border }}>
-              <DualSlider
-                min={minPrice}
-                max={maxPrice}
-                value={activePriceRange}
-                onChange={setPriceRange}
-                formatLabel={(v) => formatCurrency(v, { compact: true })}
-              />
-            </div>
-
-            <div className="flex bg-[#161616] rounded-[8px] px-3 py-2 border items-center justify-between" style={{ borderColor: colors.border }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.textMuted }}>Min Vol</span>
-              <input
-                type="number"
-                min={0}
-                value={minVolume || ""}
-                onChange={(e) => setMinVolume(Number(e.target.value))}
-                placeholder="0"
-                className="w-16 bg-transparent text-[12px] font-bold outline-none text-right tabular-nums"
-                style={{ color: colors.textPrimary }}
-              />
-            </div>
+          <div
+            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-2 py-2 border items-center justify-between gap-1"
+            style={{ borderColor: colors.border }}
+          >
+            <span className="text-[9px] font-bold uppercase tracking-wider shrink-0" style={{ color: colors.textMuted }}>
+              Min Vol
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={minVolume || ""}
+              onChange={(e) => setMinVolume(Number(e.target.value))}
+              placeholder="0"
+              className="min-w-0 w-full max-w-[3.5rem] bg-transparent text-[11px] font-bold outline-none text-right tabular-nums"
+              style={{ color: colors.textPrimary }}
+            />
           </div>
         </div>
 

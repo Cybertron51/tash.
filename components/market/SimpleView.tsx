@@ -898,7 +898,7 @@ export function SimpleView({
           {formatCurrency(totalValue)}
         </p>
         <p className="mt-2 text-[14px] font-medium" style={{ color: isDayUp ? colors.green : colors.red }}>
-          {isDayUp ? "+" : ""}{formatCurrency(dayGain)} ({isDayUp ? "+" : ""}{dayGainPct.toFixed(2)}%) 7D (holdings)
+          {isDayUp ? "+" : ""}{formatCurrency(dayGain)} ({isDayUp ? "+" : ""}{dayGainPct.toFixed(2)}%) 7D
         </p>
         {!isAuthenticated && (
           <button
@@ -945,55 +945,60 @@ export function SimpleView({
           )}
         </div>
 
-        {/* ── Filters & Sorting ── */}
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* Category Dropdown */}
-          <select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-            className="rounded-[8px] px-3 py-[7px] text-[12px] font-semibold outline-none cursor-pointer"
-            style={{
-              background: colors.surface,
-              color: categoryFilter === "all" ? colors.textMuted : colors.green,
-              border: `1px solid ${categoryFilter === "all" ? colors.border : colors.green + "40"}`,
-              appearance: "none",
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 10px center",
-              paddingRight: 28,
-            }}
+        {/* ── Filters: single row (category | price | min vol) ── */}
+        <div className="mt-3 flex flex-row gap-2 items-stretch">
+          <div className="flex-1 basis-0 min-w-0 flex items-stretch">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
+              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[11px] font-semibold outline-none cursor-pointer"
+              style={{
+                background: colors.surface,
+                color: categoryFilter === "all" ? colors.textMuted : colors.green,
+                border: `1px solid ${categoryFilter === "all" ? colors.border : colors.green + "40"}`,
+                appearance: "none",
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235A5A5A' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 8px center",
+                paddingRight: 26,
+              }}
+            >
+              <option value="all">All Categories</option>
+              <option value="pokemon">Pokémon</option>
+              <option value="sports">Sports</option>
+              <option value="mtg">MTG</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div
+            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-1 pt-0 pb-[2px] border items-center"
+            style={{ borderColor: colors.border }}
           >
-            <option value="all">All Categories</option>
-            <option value="pokemon">Pokémon</option>
-            <option value="sports">Sports</option>
-            <option value="mtg">MTG</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-
-        {/* Price Filter */}
-        <div className="flex bg-[#161616] rounded-[8px] px-3 pt-0 pb-[3px] border items-center w-48 shrink-0" style={{ borderColor: colors.border }}>
-          <DualSlider
-            min={minPrice}
-            max={maxPrice}
-            value={activePriceRange}
-            onChange={handlePriceRangeChange}
-            formatLabel={(v) => formatCurrency(v, { compact: true })}
-          />
-        </div>
-
-        {/* Volume Filter */}
-        <div className="flex bg-[#161616] rounded-[8px] px-3 py-2 border items-center gap-2 shrink-0 h-full" style={{ borderColor: colors.border }}>
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: colors.textMuted }}>Min Vol</span>
-          <input
-            type="number"
-            min={0}
-            value={minVolume || ""}
-            onChange={(e) => setMinVolume(Number(e.target.value))}
-            placeholder="0"
-            className="w-12 bg-transparent text-[12px] font-bold outline-none text-right tabular-nums"
-            style={{ color: colors.textPrimary }}
-          />
+            <DualSlider
+              min={minPrice}
+              max={maxPrice}
+              value={activePriceRange}
+              onChange={handlePriceRangeChange}
+              formatLabel={(v) => formatCurrency(v, { compact: true })}
+            />
+          </div>
+          <div
+            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-2 py-2 border items-center justify-between gap-1"
+            style={{ borderColor: colors.border }}
+          >
+            <span className="text-[9px] font-bold uppercase tracking-wider shrink-0" style={{ color: colors.textMuted }}>
+              Min Vol
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={minVolume || ""}
+              onChange={(e) => setMinVolume(Number(e.target.value))}
+              placeholder="0"
+              className="min-w-0 w-full max-w-[3.5rem] bg-transparent text-[11px] font-bold outline-none text-right tabular-nums"
+              style={{ color: colors.textPrimary }}
+            />
+          </div>
         </div>
       </div>
 
