@@ -53,6 +53,7 @@ domain-migration.md
 TECHNICAL_STRUCTURE.md
 
 public/cards/*
+!public/cards/psyduck-2019-pokemon-old-maid-psa10.png
 
 scripts/*
 .gstack/

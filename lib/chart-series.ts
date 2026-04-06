@@ -7,9 +7,21 @@ export type TimeRange = "1D" | "1W" | "1M" | "3M" | "1Y";
 const ONE_DAY_MS = 86_400_000;
 const ONE_HOUR_MS = 3_600_000;
 
+/** Rolling window for the intraday (1D) chart — must match DB fetch windows for that range. */
+export const INTRADAY_CHART_WINDOW_MS = ONE_DAY_MS;
+
+/**
+ * After merging real prints, cap how many points we draw (excluding the window-open anchor).
+ * Keeps lines readable when price_history is dense; real cards still show 4–8 moves when data is sparse.
+ */
+export const INTRADAY_CHART_MAX_POINTS = 12;
+
 export const RANGE_CONFIGS: Record<TimeRange, { bars: number; intervalMs: number }> = {
-  /** 96 pts / 24h (~15m) */
-  "1D": { bars: 96, intervalMs: 15 * 60 * 1000 },
+  /**
+   * Coarse grid for aggregate charts (portfolio) and legacy bucketed helpers.
+   * Per-card 1D views use `buildIntradayEventBasedSeries` instead of this grid.
+   */
+  "1D": { bars: 8, intervalMs: 3 * ONE_HOUR_MS },
   /** 169 pts / 7d (hourly): more samples than 1D so the week reads as denser history */
   "1W": { bars: 169, intervalMs: ONE_HOUR_MS },
   "1M": { bars: 60, intervalMs: 12 * 60 * 60 * 1000 },
@@ -221,12 +233,67 @@ export function buildTradeBucketedSeries(
   return points;
 }
 
+/**
+ * 1D chart: one point per actual price print (merged trades + price_history), irregular timestamps,
+ * forward-filled from `startPrice` at window open. Caps dense history via `downsampleChartPoints`.
+ */
+export function buildIntradayEventBasedSeries(
+  tradePts: { t: number; price: number }[],
+  anchorPrice: number,
+  startPrice: number,
+  nowMs: number
+): ChartPoint[] {
+  const windowStart = nowMs - INTRADAY_CHART_WINDOW_MS;
+  const loB = anchorPrice * (1 - TRADE_DEVIATION_CLAMP);
+  const hiB = anchorPrice * (1 + TRADE_DEVIATION_CLAMP);
+  const clampP = (p: number) => Math.max(loB, Math.min(hiB, p));
+
+  const sorted = [...tradePts].sort((a, b) => a.t - b.t);
+  let carry = clampP(startPrice);
+  for (const p of sorted) {
+    if (p.t < windowStart) carry = clampP(p.price);
+    else break;
+  }
+
+  const raw: ChartPoint[] = [{ time: windowStart, price: carry }];
+  let lastPrice = carry;
+  for (const p of sorted) {
+    if (p.t < windowStart) continue;
+    if (p.t > nowMs) break;
+    const pr = clampP(p.price);
+    const t = p.t;
+    if (raw.length && raw[raw.length - 1]!.time === t) {
+      raw[raw.length - 1] = { time: t, price: pr };
+      lastPrice = pr;
+      continue;
+    }
+    if (Math.abs(pr - lastPrice) < 1e-9) continue;
+    raw.push({ time: t, price: pr });
+    lastPrice = pr;
+  }
+
+  let pts = raw.length > INTRADAY_CHART_MAX_POINTS ? downsampleChartPoints(raw, INTRADAY_CHART_MAX_POINTS) : raw.slice();
+
+  if (pts.length === 1) {
+    pts.push({ time: nowMs, price: clampP(anchorPrice) });
+  }
+
+  return pts.map((p) => ({ time: p.time, price: clampP(p.price) }));
+}
+
 /** Set the last bucket to catalog price so the chart ends at spot and matches 7D % endpoints. */
-export function anchorSeriesTerminalToCatalog(points: ChartPoint[], anchorPrice: number): ChartPoint[] {
+export function anchorSeriesTerminalToCatalog(
+  points: ChartPoint[],
+  anchorPrice: number,
+  terminalTimeMs?: number
+): ChartPoint[] {
   if (points.length === 0) return points;
   const out = points.slice();
   const i = out.length - 1;
-  out[i] = { time: out[i]!.time, price: anchorPrice };
+  out[i] = {
+    time: terminalTimeMs ?? out[i]!.time,
+    price: anchorPrice,
+  };
   return out;
 }
 

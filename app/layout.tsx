@@ -28,6 +28,7 @@ import { layout } from "@/lib/theme";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { mapDBCardToAssetData } from "@/lib/market-data";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
+import { isMissingMarketListedColumn } from "@/lib/market-listed-column";
 
 // ─────────────────────────────────────────────────────────
 // Metadata
@@ -70,10 +71,15 @@ export default async function RootLayout({
   let tickerItems: ReturnType<typeof mapDBCardToAssetData>[] = [];
 
   if (supabaseAdmin) {
-    const { data: dbCards } = await supabaseAdmin
-      .from("cards")
-      .select("*, prices(*)")
-      .limit(12);
+    const tickerQuery = (listedOnly: boolean) => {
+      let q = supabaseAdmin!.from("cards").select("*, prices(*)");
+      if (listedOnly) q = q.eq("market_listed", true);
+      return q.limit(12);
+    };
+    let { data: dbCards, error: tickerErr } = await tickerQuery(true);
+    if (tickerErr && isMissingMarketListedColumn(tickerErr)) {
+      ({ data: dbCards } = await tickerQuery(false));
+    }
 
     if (dbCards && dbCards.length > 0) {
       const metrics = await batchSevenDayChangeFromTrades(

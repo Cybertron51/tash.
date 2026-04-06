@@ -57,7 +57,7 @@ function hasSupabaseSession(request: NextRequest): boolean {
 }
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Always allow public routes

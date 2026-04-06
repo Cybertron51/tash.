@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack --hostname 127.0.0.1",
+    "dev:turbo": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:sim-users": "tsx scripts/seed-sim-users-from-csv.ts",
-    "seed:sim-trades": "tsx scripts/seed-sim-trades.ts"
+    "seed:sim-trades": "tsx scripts/seed-sim-trades.ts",
+    "rewrite:price-history": "tsx scripts/rewrite-price-history-from-catalog.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

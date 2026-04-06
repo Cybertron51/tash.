@@ -86,6 +86,11 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
 function MarketPageContent() {
   const searchParams = useSearchParams();
   const [assets, setAssets] = useState<AssetData[]>([]);
+  /** Fresh catalog for searchParams-only updates without refetch (avoids unmounting SimpleView / losing modal state). */
+  const assetsCatalogRef = useRef<AssetData[]>([]);
+  useEffect(() => {
+    assetsCatalogRef.current = assets;
+  }, [assets]);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [range, setRange] = useState<TimeRange>("1W");
@@ -149,9 +154,39 @@ function MarketPageContent() {
     visibleAssets,
   });
 
+  /**
+   * Vault imagery may only be merged when the holding is the same catalog row.
+   * Matching on symbol alone can show another user’s slab (e.g. baseball) while the header still shows Pokémon.
+   */
+  /** Same catalog row only — never symbol/name (avoids wrong slab when symbols collide). */
+  const vaultHoldingForSelected = useMemo(() => {
+    if (!selected || holdings.length === 0) return undefined;
+    return holdings.find((h) => h.cardId === selected.id);
+  }, [selected, holdings]);
+
+  useEffect(() => {
+    setActiveMarketImageIndex(0);
+  }, [selected?.id]);
+
   // ── Initial load from Supabase ─────────────────────────
   useEffect(() => {
     async function fetchAssets() {
+      const urlSymbol = searchParams?.get("symbol") ?? null;
+      const catalog = assetsCatalogRef.current;
+
+      // Client-side ?symbol= changes must not toggle isLoading or remount the tree — otherwise
+      // SimpleView loses openTrade state when ⌘K navigates here and again when SimpleView clears the param.
+      if (catalog.length > 0) {
+        if (urlSymbol) {
+          const { selectedSymbol: sym, revealNonTradable } = selectionFromUrlSymbol(urlSymbol, catalog);
+          setSelectedSymbol(sym);
+          if (revealNonTradable) {
+            setShowNonTradable(true);
+          }
+        }
+        return;
+      }
+
       setIsLoading(true);
       const { getMarketCards } = await import("@/lib/db/cards");
       const { getActiveListingCounts } = await import("@/lib/db/vault");
@@ -170,7 +205,6 @@ function MarketPageContent() {
         });
         setAssets(newAssets);
 
-        const urlSymbol = searchParams?.get("symbol");
         if (urlSymbol) {
           const { selectedSymbol: sym, revealNonTradable } = selectionFromUrlSymbol(urlSymbol, newAssets);
           setSelectedSymbol(sym);
@@ -914,12 +948,20 @@ function MarketPageContent() {
                 {dashboardTab === "image" ? (
                   <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
                     {(() => {
-                      const h = holdings?.find(h => h.symbol === selected.symbol);
-                      const hiResImage = selected.imageUrl || h?.imageUrl || `/cards/${selected.symbol}.svg`;
-                      const psaThumbnail = h?.imageUrl && selected.imageUrl && h.imageUrl !== selected.imageUrl ? h.imageUrl : null;
-                      const rawScan = h?.rawImageUrl || null;
-                      // Build image list: hi-res first, then optional extras
-                      const images = [hiResImage, ...(psaThumbnail ? [psaThumbnail] : []), ...(rawScan ? [rawScan] : [])].filter((v, i, a) => a.indexOf(v) === i);
+                      const h = vaultHoldingForSelected;
+                      const hiResImage =
+                        selected.imageUrl?.trim() || `/cards/${selected.symbol}.svg`;
+                      const psaThumbnail =
+                        h?.imageUrl?.trim() &&
+                        selected.imageUrl?.trim() &&
+                        h.imageUrl !== selected.imageUrl
+                          ? h.imageUrl.trim()
+                          : null;
+                      const rawScan = h?.rawImageUrl?.trim() || null;
+                      // Catalog drives hero; vault adds alternates only for this card_id
+                      const images = [hiResImage, ...(psaThumbnail ? [psaThumbnail] : []), ...(rawScan ? [rawScan] : [])].filter(
+                        (v, i, a) => a.indexOf(v) === i
+                      );
 
                       return (
                         <div className="flex flex-col items-center gap-3">
@@ -938,6 +980,7 @@ function MarketPageContent() {
                             }}
                           >
                             <img
+                              key={`${selected.id}-${images[activeMarketImageIndex] || images[0]}`}
                               src={images[activeMarketImageIndex] || images[0]}
                               alt={selected.name}
                               className="w-full h-full"

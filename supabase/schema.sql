@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS cards (
   -- Source tracking
   pokemon_card_id TEXT,                          -- pokemontcg.io card ID, e.g. "base1-4"
 
+  -- Public market: when false, hidden from browse/search (row kept for vault/history FKs)
+  market_listed   BOOLEAN     NOT NULL DEFAULT true,
+
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );

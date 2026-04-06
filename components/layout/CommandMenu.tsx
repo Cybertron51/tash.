@@ -80,6 +80,7 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
             open={open}
             onOpenChange={setOpen}
             label="Global Command Menu"
+            shouldFilter={false}
             className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] sm:pt-[20vh] px-4"
         >
             {/* Backdrop */}

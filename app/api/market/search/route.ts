@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
+import { isMissingMarketListedColumn } from "@/lib/market-listed-column";
 
 /**
  * GET /api/market/search?q=charizard&limit=20
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest) {
     if (!supabaseAdmin) {
         return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
+    const db = supabaseAdmin;
 
     const { searchParams } = new URL(req.url);
     const q = searchParams.get("q") || "";
@@ -19,16 +21,25 @@ export async function GET(req: NextRequest) {
         return NextResponse.json([]);
     }
 
-    const { data, error } = await supabaseAdmin
-        .from("cards")
-        .select(`
+    const nameSearchSelect = `
       id, symbol, name, category, set_name, set_id, year,
       rarity, psa_grade, population, image_url, image_url_hi,
       prices (price, change_24h, change_pct_24h)
-    `)
-        .ilike("name", `%${q}%`)
-        .order("population", { ascending: false, nullsFirst: false })
-        .limit(limit);
+    `;
+
+    const runNameSearch = (listedOnly: boolean) => {
+        let qb = db.from("cards").select(nameSearchSelect);
+        if (listedOnly) qb = qb.eq("market_listed", true);
+        return qb
+            .ilike("name", `%${q}%`)
+            .order("population", { ascending: false, nullsFirst: false })
+            .limit(limit);
+    };
+
+    let { data, error } = await runNameSearch(true);
+    if (error && isMissingMarketListedColumn(error)) {
+        ({ data, error } = await runNameSearch(false));
+    }
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });
@@ -49,7 +60,7 @@ export async function GET(req: NextRequest) {
     const withIds = cards as CardRow[];
 
     const metrics = await batchSevenDayChangeFromTrades(
-        supabaseAdmin,
+        db,
         withIds.map((c) => ({ id: c.id, symbol: c.symbol }))
     );
 

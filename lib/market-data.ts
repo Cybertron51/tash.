@@ -28,6 +28,7 @@ export interface AssetData {
 }
 
 import type { DBCard } from "./db/cards";
+import { catalogImageUrlOverride } from "./catalog-image-override";
 import { RANGE_CONFIGS, SPARKLINE_WEEK, type TimeRange } from "./chart-series";
 
 export type { TimeRange } from "./chart-series";
@@ -45,6 +46,13 @@ export function recomputeAssetChangeForNewPrice(
 
 export function mapDBCardToAssetData(c: DBCard): AssetData {
   const has7d = "change_7d" in c && "change_pct_7d" in c;
+  const fromDb = c.image_url_hi || c.image_url || undefined;
+  const hotfix =
+    catalogImageUrlOverride({
+      name: c.name,
+      setName: c.set_name,
+      category: c.category,
+    }) ?? undefined;
   return {
     id: c.id,
     name: c.name,
@@ -60,7 +68,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     category: c.category,
     hasLiquidity: false, // Will be populated by the frontend
     population: c.population,
-    imageUrl: c.image_url_hi || c.image_url || undefined,
+    imageUrl: hotfix ?? fromDb,
   };
 }
 

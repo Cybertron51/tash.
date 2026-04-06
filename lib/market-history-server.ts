@@ -7,9 +7,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   anchorSeriesTerminalToCatalog,
   applyMarketChartDisplayShape,
+  buildIntradayEventBasedSeries,
   buildTradeBucketedSeries,
   clampPriceToAnchorBand,
   downsampleChartPoints,
+  INTRADAY_CHART_WINDOW_MS,
   RANGE_CONFIGS,
   regulateListSparklineNetMove,
   SPARKLINE,
@@ -233,9 +235,13 @@ export async function buildSymbolTradeHistory(
   range: TimeRange,
   options?: { sparkline?: boolean; cardId?: string | null }
 ): Promise<HistoryRow[]> {
-  const { bars, intervalMs } = options?.sparkline ? SPARKLINE : RANGE_CONFIGS[range];
+  const usingSparkline = !!options?.sparkline;
+  const useIntradayEvents = range === "1D" && !usingSparkline;
+  const { bars, intervalMs } = usingSparkline ? SPARKLINE : RANGE_CONFIGS[range];
   const nowMs = Date.now();
-  const sinceMs = nowMs - bars * intervalMs - 120_000;
+  const sinceMs = useIntradayEvents
+    ? nowMs - INTRADAY_CHART_WINDOW_MS - 120_000
+    : nowMs - bars * intervalMs - 120_000;
   const sinceIso = new Date(sinceMs).toISOString();
 
   let anchorPrice = synthesizePeerPrice(symbol, 25);
@@ -324,10 +330,16 @@ export async function buildSymbolTradeHistory(
     price: clampPriceToAnchorBand(p.price, anchorPrice),
   }));
 
-  let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
-  series = anchorSeriesTerminalToCatalog(series, anchorPrice);
-  const shapeRange: MarketChartShapeRange = options?.sparkline ? "sparkline" : range;
-  series = applyMarketChartDisplayShape(series, anchorPrice, symbol, shapeRange);
+  let series: ChartPoint[];
+  if (useIntradayEvents) {
+    series = buildIntradayEventBasedSeries(tradePts, anchorPrice, startPrice, nowMs);
+    series = anchorSeriesTerminalToCatalog(series, anchorPrice, nowMs);
+  } else {
+    series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
+    series = anchorSeriesTerminalToCatalog(series, anchorPrice);
+    const shapeRange: MarketChartShapeRange = usingSparkline ? "sparkline" : range;
+    series = applyMarketChartDisplayShape(series, anchorPrice, symbol, shapeRange);
+  }
 
   return series.map((p) => ({
     recorded_at: new Date(p.time).toISOString(),
@@ -365,9 +377,12 @@ export async function buildBatchMarketHistory(
 
   const sparklineUses1W = !!options?.sparkline;
   const buildRange: TimeRange = sparklineUses1W ? "1W" : range;
+  const useIntradayEvents = buildRange === "1D" && !sparklineUses1W;
   const { bars, intervalMs } = RANGE_CONFIGS[buildRange];
   const nowMs = Date.now();
-  const sinceMs = nowMs - bars * intervalMs - 120_000;
+  const sinceMs = useIntradayEvents
+    ? nowMs - INTRADAY_CHART_WINDOW_MS - 120_000
+    : nowMs - bars * intervalMs - 120_000;
   const sinceIso = new Date(sinceMs).toISOString();
 
   const { data: cards, error: cardsErr } = await admin
@@ -510,16 +525,24 @@ export async function buildBatchMarketHistory(
     const startRef = priorTradeBySymbol.get(sym) ?? priorHistPx ?? anchorPrice;
     const startPrice = clampPriceToAnchorBand(startRef, anchorPrice);
 
-    let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
-    series = anchorSeriesTerminalToCatalog(series, anchorPrice);
+    let series: ChartPoint[];
+    if (useIntradayEvents) {
+      series = buildIntradayEventBasedSeries(tradePts, anchorPrice, startPrice, nowMs);
+      series = anchorSeriesTerminalToCatalog(series, anchorPrice, nowMs);
+    } else {
+      series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
+      series = anchorSeriesTerminalToCatalog(series, anchorPrice);
+    }
     /** Per-card seed: duplicate `symbol` values share trades/history shape unless id differs. */
     const listDisplaySeed = `${id}|${sym}`;
     if (sparklineUses1W) {
       const catMed = categoryMedianPrice.get(String(card.category ?? "other")) ?? null;
       series = regulateListSparklineNetMove(series, anchorPrice, listDisplaySeed, { categoryMedian: catMed });
     }
-    const shapeRange: MarketChartShapeRange = sparklineUses1W ? "1W" : range;
-    series = ApplyMarketChartDisplayShapeForBatch(series, anchorPrice, listDisplaySeed, shapeRange, sparklineUses1W);
+    if (!useIntradayEvents) {
+      const shapeRange: MarketChartShapeRange = sparklineUses1W ? "1W" : range;
+      series = ApplyMarketChartDisplayShapeForBatch(series, anchorPrice, listDisplaySeed, shapeRange, sparklineUses1W);
+    }
 
     out[id] = series.map((p) => ({
       recorded_at: new Date(p.time).toISOString(),

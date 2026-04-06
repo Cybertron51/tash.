@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
 import { applyPeerPriceFallback } from "@/lib/peer-price-fallback";
+import { isMissingMarketListedColumn } from "@/lib/market-listed-column";
 
 /**
  * GET /api/market/cards
@@ -12,28 +13,33 @@ export async function GET(req: NextRequest) {
     if (!supabaseAdmin) {
         return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
+    const db = supabaseAdmin;
 
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category");
     const grade = searchParams.get("grade");
     const limit = searchParams.get("limit");
 
-    let query = supabaseAdmin
-        .from("cards")
-        .select(`
+    const cardListSelect = `
       id, symbol, name, category, set_name, set_id, year,
       rarity, artist, hp, card_types, card_number,
       psa_grade, population, image_url, image_url_hi, pokemon_card_id,
       prices (price, change_24h, change_pct_24h, high_24h, low_24h, volume_24h)
-    `);
+    `;
 
-    if (category) query = query.eq("category", category);
-    if (grade) query = query.eq("psa_grade", parseInt(grade));
-    if (limit) query = query.limit(parseInt(limit));
+    const buildQuery = (listedOnly: boolean) => {
+        let q = db.from("cards").select(cardListSelect);
+        if (listedOnly) q = q.eq("market_listed", true);
+        if (category) q = q.eq("category", category);
+        if (grade) q = q.eq("psa_grade", parseInt(grade));
+        if (limit) q = q.limit(parseInt(limit));
+        return q.order("created_at", { ascending: false });
+    };
 
-    query = query.order("created_at", { ascending: false });
-
-    const { data, error } = await query;
+    let { data, error } = await buildQuery(true);
+    if (error && isMissingMarketListedColumn(error)) {
+        ({ data, error } = await buildQuery(false));
+    }
 
     if (error) {
         return NextResponse.json({ error: error.message }, { status: 500 });

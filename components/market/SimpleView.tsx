@@ -27,7 +27,7 @@ import {
 
 import { usePortfolio } from "@/lib/portfolio-context";
 import { DualSlider } from "@/components/ui/DualSlider";
-import { filterSimpleMarketAssets } from "@/lib/market-view-filters";
+import { filterSimpleMarketAssets, findAssetBySymbol } from "@/lib/market-view-filters";
 import { listedSupplyFromOrderBook, tradableInventoryCount } from "@/lib/order-quantity-limits";
 
 // ─────────────────────────────────────────────────────────
@@ -729,10 +729,10 @@ export function SimpleView({
     if (assets.length === 0) return;
     if (deepLinkConsumed.current === raw) return;
 
-    const match = assets.find((a) => a.symbol === raw);
+    const match = findAssetBySymbol(assets, raw);
     if (!match) return;
 
-    deepLinkConsumed.current = raw;
+    deepLinkConsumed.current = match.symbol;
     setQuery(match.name);
     setTradeModal({ asset: match, allowSell: false });
     router.replace("/market", { scroll: false });
@@ -814,6 +814,73 @@ export function SimpleView({
     [assets, query, portfolioSymbols, showNonTradable, categoryFilter, priceRange, minVolume]
   );
 
+  /**
+   * Align with ⌘K / Advanced: go to the resolved card (trade modal) via ?symbol=.
+   * Enter was previously a no-op (only preventDefault), so queries like “Cameron Brink” never opened the asset.
+   */
+  const submitSimpleSearch = useCallback(async () => {
+    const q = query.trim();
+    if (!q) return;
+
+    const lower = q.toLowerCase();
+
+    const pickFrom = (list: AssetData[]): AssetData | null => {
+      if (list.length === 0) return null;
+      const exact = list.find((a) => (a.name ?? "").toLowerCase() === lower);
+      if (exact) return exact;
+      const wordStart = list.find((a) => {
+        const n = (a.name ?? "").toLowerCase();
+        return n.startsWith(lower) || n.split(/\s+/).some((w) => w.startsWith(lower));
+      });
+      if (wordStart) return wordStart;
+      return null;
+    };
+
+    let match = pickFrom(marketAssets);
+
+    if (!match) {
+      const pool = assets.filter(
+        (a) =>
+          (a.name ?? "").toLowerCase().includes(lower) ||
+          (a.symbol ?? "").toLowerCase().includes(lower) ||
+          (a.set ?? "").toLowerCase().includes(lower) ||
+          (a.category ?? "").toLowerCase().includes(lower)
+      );
+      match = pickFrom(pool);
+    }
+
+    if (!match) {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = (await res.json()) as { results?: { symbol: string }[] };
+          const sym = data.results?.[0]?.symbol;
+          if (sym) {
+            match = findAssetBySymbol(assets, sym) ?? null;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (!match) return;
+
+    if (match.hasLiquidity === false && !showNonTradable) {
+      onToggleShowNonTradable();
+    }
+
+    deepLinkConsumed.current = null;
+    router.replace(`/market?symbol=${encodeURIComponent(match.symbol)}`, { scroll: false });
+  }, [
+    query,
+    marketAssets,
+    assets,
+    showNonTradable,
+    onToggleShowNonTradable,
+    router,
+  ]);
+
   // Keep modal asset price live
   const modalAsset = tradeModal
     ? assets.find((a) => a.symbol === tradeModal.asset.symbol) ?? tradeModal.asset
@@ -863,7 +930,10 @@ export function SimpleView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") e.preventDefault();
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void submitSimpleSearch();
+              }
             }}
             className="flex-1 bg-transparent text-[16px] outline-none placeholder:text-[16px] md:text-[14px] md:placeholder:text-[14px]"
             style={{ color: colors.textPrimary }}

@@ -18,6 +18,17 @@ export interface MarketFilterAsset {
 export type SimpleCategoryFilter = "all" | MarketCategory;
 export type AdvancedCategoryFilter = "all" | "pokemon" | "sports" | "mtg";
 
+/** Case-insensitive catalog lookup by trading symbol (URL deep links / search API). */
+export function findAssetBySymbol<T extends { symbol: string }>(
+  assets: readonly T[],
+  raw: string
+): T | undefined {
+  const s = raw.trim();
+  if (!s) return undefined;
+  const lo = s.toLowerCase();
+  return assets.find((a) => a.symbol === s || a.symbol.toLowerCase() === lo);
+}
+
 /** Simple Market list: browse vs search rules (matches `SimpleView` marketAssets). */
 export function filterSimpleMarketAssets<T extends MarketFilterAsset>(params: {
   assets: T[];
@@ -98,7 +109,7 @@ export function resolveAdvancedSelectedAsset<T extends MarketFilterAsset>(params
   selectedSymbol: string;
   visibleAssets: T[];
 }): T | null {
-  const fromSymbol = params.assets.find((a) => a.symbol === params.selectedSymbol);
+  const fromSymbol = findAssetBySymbol(params.assets, params.selectedSymbol);
   if (fromSymbol) return fromSymbol;
   return params.visibleAssets[0] ?? null;
 }
@@ -110,14 +121,13 @@ export function selectionFromUrlSymbol(
   urlSymbol: string,
   newAssets: MarketFilterAsset[]
 ): { selectedSymbol: string; revealNonTradable: boolean } {
-  const target = newAssets.find((a) => a.symbol === urlSymbol);
+  const target = findAssetBySymbol(newAssets, urlSymbol);
   if (target) {
     return {
-      selectedSymbol: urlSymbol,
+      selectedSymbol: target.symbol,
       revealNonTradable: !target.hasLiquidity,
     };
   }
-  const initialVisible = newAssets.filter((a) => a.hasLiquidity);
-  const fallback = initialVisible[0]?.symbol ?? newAssets[0]?.symbol ?? "";
-  return { selectedSymbol: fallback, revealNonTradable: false };
+  // Never substitute a different card — that surfaced random high-volume rows (e.g. “Psyduck” → wrong player).
+  return { selectedSymbol: urlSymbol.trim(), revealNonTradable: false };
 }

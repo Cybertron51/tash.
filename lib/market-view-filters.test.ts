@@ -188,8 +188,15 @@ describe("selectionFromUrlSymbol", () => {
     });
   });
 
-  it("falls back when symbol missing", () => {
+  it("keeps requested symbol when missing from catalog (no random substitute)", () => {
     expect(selectionFromUrlSymbol("MISSING", catalog)).toEqual({
+      selectedSymbol: "MISSING",
+      revealNonTradable: false,
+    });
+  });
+
+  it("matches catalog symbol case-insensitively", () => {
+    expect(selectionFromUrlSymbol("cb", catalog)).toEqual({
       selectedSymbol: "CB",
       revealNonTradable: false,
     });

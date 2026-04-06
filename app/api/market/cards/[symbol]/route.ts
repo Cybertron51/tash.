@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
 import { fetchPeerMedianFromDb, synthesizePeerPrice } from "@/lib/peer-price-fallback";
+import { isMissingMarketListedColumn } from "@/lib/market-listed-column";
 
 /**
  * GET /api/market/cards/[symbol]
@@ -14,21 +15,29 @@ export async function GET(
     if (!supabaseAdmin) {
         return NextResponse.json({ error: "Database not configured" }, { status: 503 });
     }
+    const db = supabaseAdmin;
 
     const { symbol } = await params;
 
-    const { data, error } = await supabaseAdmin
-        .from("cards")
-        .select(`
+    const detailSelect = `
       id, symbol, name, category, set_name, set_id, year,
       rarity, artist, hp, card_types, card_number,
       psa_grade, population, image_url, image_url_hi, pokemon_card_id,
       prices (price, change_24h, change_pct_24h, high_24h, low_24h, volume_24h)
-    `)
-        .eq("symbol", symbol)
-        .single();
+    `;
 
-    if (error) {
+    const fetchBySymbol = (listedOnly: boolean) => {
+        let q = db.from("cards").select(detailSelect).eq("symbol", symbol);
+        if (listedOnly) q = q.eq("market_listed", true);
+        return q.single();
+    };
+
+    let { data, error } = await fetchBySymbol(true);
+    if (error && isMissingMarketListedColumn(error)) {
+        ({ data, error } = await fetchBySymbol(false));
+    }
+
+    if (error || !data) {
         return NextResponse.json({ error: "Card not found" }, { status: 404 });
     }
 
@@ -37,7 +46,7 @@ export async function GET(
     const prices = (Array.isArray(pricesRaw) ? pricesRaw[0] : pricesRaw) ?? {};
     const { prices: _drop, ...rest } = data;
 
-    const metrics = await batchSevenDayChangeFromTrades(supabaseAdmin, [
+    const metrics = await batchSevenDayChangeFromTrades(db, [
         { id: rest.id as string, symbol: rest.symbol as string },
     ]);
     const m = metrics.get(rest.id as string);
@@ -50,9 +59,9 @@ export async function GET(
     let change_7d = m?.change_7d ?? 0;
     let change_pct_7d = m?.change_pct_7d ?? 0;
 
-    if (!(price > 0) && supabaseAdmin) {
+    if (!(price > 0)) {
         const med = await fetchPeerMedianFromDb(
-            supabaseAdmin,
+            db,
             String(rest.category ?? "other"),
             Number(rest.psa_grade),
             rest.id as string
