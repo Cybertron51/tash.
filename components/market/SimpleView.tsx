@@ -946,12 +946,12 @@ export function SimpleView({
         </div>
 
         {/* ── Filters: single row (category | price | min vol) ── */}
-        <div className="mt-3 flex flex-row gap-2 items-stretch">
-          <div className="flex-1 basis-0 min-w-0 flex items-stretch">
+        <div className="mt-3 flex flex-row items-center gap-2">
+          <div className="flex min-w-0 flex-1 basis-0 items-center justify-center">
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[11px] font-semibold tracking-tight outline-none cursor-pointer"
+              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-center text-[11px] font-semibold tracking-tight outline-none cursor-pointer"
               style={{
                 background: colors.surface,
                 color: categoryFilter === "all" ? colors.textMuted : colors.green,
@@ -971,7 +971,7 @@ export function SimpleView({
             </select>
           </div>
           <div
-            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-1 pt-0 pb-[2px] border items-center"
+            className="flex min-w-0 flex-1 basis-0 items-center justify-center rounded-[8px] border bg-[#161616] px-1 py-1"
             style={{ borderColor: colors.border }}
           >
             <DualSlider
@@ -983,10 +983,10 @@ export function SimpleView({
             />
           </div>
           <div
-            className="flex-1 basis-0 min-w-0 flex bg-[#161616] rounded-[8px] px-2 py-2 border items-center justify-between gap-1"
+            className="flex min-w-0 flex-1 basis-0 items-center justify-center gap-2 rounded-[8px] border bg-[#161616] px-2 py-2"
             style={{ borderColor: colors.border }}
           >
-            <span className="text-[9px] font-bold uppercase tracking-wider shrink-0" style={{ color: colors.textMuted }}>
+            <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide" style={{ color: colors.textMuted }}>
               Min Vol
             </span>
             <input
@@ -995,7 +995,7 @@ export function SimpleView({
               value={minVolume || ""}
               onChange={(e) => setMinVolume(Number(e.target.value))}
               placeholder="0"
-              className="min-w-0 w-full max-w-[3.5rem] bg-transparent text-[11px] font-bold outline-none text-right tabular-nums"
+              className="w-11 min-w-0 bg-transparent text-center text-[11px] font-bold outline-none tabular-nums"
               style={{ color: colors.textPrimary }}
             />
           </div>
