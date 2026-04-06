@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "seed:sim-users": "tsx scripts/seed-sim-users-from-csv.ts",
     "seed:sim-trades": "tsx scripts/seed-sim-trades.ts"
   },
@@ -45,7 +47,8 @@
     "@types/pg": "^8.11.10",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "use-sync-external-store": {

@@ -28,7 +28,7 @@ export interface AssetData {
 }
 
 import type { DBCard } from "./db/cards";
-import { RANGE_CONFIGS, SPARKLINE, type TimeRange } from "./chart-series";
+import { RANGE_CONFIGS, SPARKLINE_WEEK, type TimeRange } from "./chart-series";
 
 export type { TimeRange } from "./chart-series";
 
@@ -125,8 +125,68 @@ export function generateHistory(
 }
 
 // ─────────────────────────────────────────────────────────
-// Sparkline generator — 20 hourly points
+// Sparkline generator — ~7d / 20 points, slope from 7D % + light wiggle
 // ─────────────────────────────────────────────────────────
+
+function symbolPhase(symbol: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < symbol.length; i++) {
+    h ^= symbol.charCodeAt(i)!;
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 0xffff_ffff;
+}
+
+/** Matches server `regulateListSparklineNetMove` band (~15% base + jitter); last-resort UI clamp. */
+export const SPARKLINE_LIST_MAX_ABS_DISPLAY_PCT = 22;
+
+/**
+ * % change over the drawn sparkline: (last price − first) / first so the label matches the polyline.
+ * Falls back to clamped `fallbackPct` when the series is too short. When clamping outliers, the cap
+ * is slightly varied by endpoints so two rows rarely show the same pinned number (e.g. both −22.00).
+ */
+export function spotAnchoredSparklineChangePct(
+  points: PricePoint[] | undefined,
+  spotPrice: number,
+  fallbackPct: number,
+  maxAbsPct: number = SPARKLINE_LIST_MAX_ABS_DISPLAY_PCT
+): number {
+  const pts = points ?? [];
+  if (pts.length < 2) {
+    return clampAbsPctWithVariation(fallbackPct, maxAbsPct, `fb|${fallbackPct}`);
+  }
+  const start = pts[0]!.price;
+  const end = pts[pts.length - 1]!.price;
+  if (!(start > 0) || !(end > 0)) {
+    return clampAbsPctWithVariation(fallbackPct, maxAbsPct, `bad|${start}|${end}`);
+  }
+  const raw = ((end - start) / start) * 100;
+  if (!Number.isFinite(raw)) {
+    return clampAbsPctWithVariation(fallbackPct, maxAbsPct, "nan");
+  }
+  const seed = `${start}|${end}|${pts.length}`;
+  return clampAbsPctWithVariation(raw, maxAbsPct, seed);
+}
+
+/** When pinned to the cap, nudge ±~14% of `maxAbs` so duplicate-symbol rows don’t match exactly. */
+function clampAbsPctWithVariation(pct: number, maxAbs: number, seed: string): number {
+  if (!Number.isFinite(pct)) return 0;
+  const m = Math.abs(maxAbs);
+  if (m <= 0) return pct;
+  if (Math.abs(pct) <= m) return pct;
+  const headroom = m * (0.86 + 0.14 * symbolPhase(`${seed}|cap`));
+  return Math.sign(pct) * headroom;
+}
+
+export function spotAnchoredSparklineUp(
+  points: PricePoint[] | undefined,
+  spotPrice: number,
+  fallbackChange: number
+): boolean {
+  const pts = points ?? [];
+  if (pts.length < 2) return fallbackChange >= 0;
+  return spotAnchoredSparklineChangePct(points, spotPrice, 0) >= 0;
+}
 
 export function generateSparkline(
   price: number,
@@ -135,14 +195,39 @@ export function generateSparkline(
 ): PricePoint[] {
   const now = Date.now();
   const points: PricePoint[] = [];
-  const { bars, intervalMs } = SPARKLINE;
+  const { bars, intervalMs } = SPARKLINE_WEEK;
+
+  const pctRaw = Number.isFinite(changePct) ? changePct : 0;
+  const pct = clampAbsPctWithVariation(pctRaw, SPARKLINE_LIST_MAX_ABS_DISPLAY_PCT, symbol);
+  const denom = 1 + pct / 100;
+  const startPrice =
+    denom !== 0 && Math.abs(denom) > 1e-9 ? price / denom : price;
+
+  const phase = symbolPhase(symbol);
+  /** No decorative wobble when ~flat — avoids “fake rally” at 0% vs label. */
+  const allowWobble = Math.abs(pct) >= 0.05;
 
   for (let i = 0; i < bars; i++) {
     const time = now - (bars - 1 - i) * intervalMs;
-    points.push({ time, price });
+    const t = bars <= 1 ? 1 : i / (bars - 1);
+    const chord = startPrice + (price - startPrice) * t;
+    const ends = i === 0 || i === bars - 1;
+    const wobble =
+      ends || !allowWobble
+        ? 0
+        : price * 0.0022 * Math.sin(t * Math.PI * 2 * 2.3 + phase * 12.9898);
+    const p = Math.max(0.01, chord + wobble);
+    points.push({ time, price: round2(p) });
   }
 
+  points[bars - 1] = { time: points[bars - 1]!.time, price: round2(price) };
+  points[0] = { time: points[0]!.time, price: round2(startPrice) };
+
   return points;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 // ─────────────────────────────────────────────────────────

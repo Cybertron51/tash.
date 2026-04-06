@@ -7,10 +7,12 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 
 interface SignInModalProps {
   onClose: () => void;
@@ -23,6 +25,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
   const [errorMsg, setErrorMsg] = useState("");
 
   const router = useRouter();
+  const { refreshProfile } = useAuth();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,14 +33,27 @@ export function SignInModal({ onClose }: SignInModalProps) {
     setLoading(true);
     setErrorMsg("");
 
+    const trimmedEmail = email.trim();
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: trimmedEmail,
+        password,
+      });
       if (error) throw error;
+      await refreshProfile();
       onClose();
       router.push("/market");
       router.refresh();
-    } catch (err: any) {
-      setErrorMsg(err.message || "Failed to authenticate.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to authenticate.";
+      const lower = String(message).toLowerCase();
+      if (lower.includes("email not confirmed")) {
+        setErrorMsg(
+          "Confirm your email first — check your inbox for the verification link, or use Forgot password to resend recovery email."
+        );
+      } else {
+        setErrorMsg(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -54,23 +70,28 @@ export function SignInModal({ onClose }: SignInModalProps) {
   };
 
   return (
-    /* Backdrop */
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      {/* Panel */}
+    <>
+      {/* Backdrop overlay — click to close */}
       <div
-        className="relative w-full max-w-[380px] rounded-[16px] p-6"
-        style={{
-          background: colors.surface,
-          border: `1px solid ${colors.border}`,
-          boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
-        }}
-      >
+        className="fixed inset-0 z-[200]"
+        style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}
+        onClick={onClose}
+      />
+
+      {/* Panel container — separate layer above backdrop so pointer events reach the panel */}
+      <div className="pointer-events-none fixed inset-0 z-[201] flex items-center justify-center p-4">
+        {/* Panel */}
+        <div
+          className="pointer-events-auto relative w-full max-w-[380px] rounded-[16px] p-6"
+          style={{
+            background: colors.surface,
+            border: `1px solid ${colors.border}`,
+            boxShadow: "0 24px 64px rgba(0,0,0,0.8)",
+          }}
+        >
         {/* Close */}
         <button
+          type="button"
           onClick={onClose}
           className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:bg-[#2A2A2A]"
           style={{ color: colors.textMuted }}
@@ -130,6 +151,16 @@ export function SignInModal({ onClose }: SignInModalProps) {
               color: colors.textPrimary
             }}
           />
+          <div className="flex justify-end -mt-1">
+            <Link
+              href="/forgot-password"
+              className="text-[11px] font-semibold hover:underline"
+              style={{ color: colors.green }}
+              onClick={onClose}
+            >
+              Forgot password?
+            </Link>
+          </div>
 
           <button
             type="submit"
@@ -148,6 +179,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
         </div>
 
         <button
+          type="button"
           onClick={handleGoogleOAuth}
           className="flex w-full items-center justify-center gap-3 rounded-[10px] border py-[11px] text-[13px] font-semibold transition-colors hover:bg-[#1E1E1E]"
           style={{
@@ -183,7 +215,8 @@ export function SignInModal({ onClose }: SignInModalProps) {
           {" "}and{" "}
           <span style={{ color: colors.textSecondary, cursor: "pointer" }}>Privacy Policy</span>.
         </p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -59,14 +59,16 @@ CREATE TABLE IF NOT EXISTS cards (
 -- One row per card, upserted by the price-tick job.
 
 CREATE TABLE IF NOT EXISTS prices (
-  card_id         UUID        PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
-  price           DECIMAL(14,2) NOT NULL,
-  change_24h      DECIMAL(14,2) DEFAULT 0,
-  change_pct_24h  DECIMAL(10,4) DEFAULT 0,
-  high_24h        DECIMAL(14,2),
-  low_24h         DECIMAL(14,2),
-  volume_24h      INTEGER       DEFAULT 0,
-  updated_at      TIMESTAMPTZ   DEFAULT NOW()
+  card_id              UUID        PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
+  price                DECIMAL(14,2) NOT NULL,
+  change_24h           DECIMAL(14,2) DEFAULT 0,
+  change_pct_24h       DECIMAL(10,4) DEFAULT 0,
+  high_24h             DECIMAL(14,2),
+  low_24h              DECIMAL(14,2),
+  volume_24h           INTEGER       DEFAULT 0,
+  updated_at           TIMESTAMPTZ   DEFAULT NOW(),
+  market_tick_day      DATE,
+  market_tick_count    SMALLINT      NOT NULL DEFAULT 0
 );
 
 -- ── Price History ───────────────────────────────────────────

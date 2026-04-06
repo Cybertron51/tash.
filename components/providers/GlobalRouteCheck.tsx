@@ -10,9 +10,11 @@ const PUBLIC_ROUTES = [
     "/",
     "/sign-in",
     "/sign-up",
+    "/forgot-password",
     "/onboarding",
     "/auth/callback",
-    "/market"
+    "/auth/reset-password",
+    "/market",
 ];
 
 // Routes that are strictly public (no auth needed at all, but we watch them)

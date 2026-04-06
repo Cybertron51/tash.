@@ -67,6 +67,34 @@ export async function POST(req: NextRequest) {
     const adminClient = createClient(supabaseServiceUrl, supabaseServiceKey);
 
     if (isBuy) {
+      const { data: sellRows, error: sellListErr } = await adminClient
+        .from("orders")
+        .select("quantity")
+        .eq("symbol", symbol)
+        .eq("type", "sell")
+        .eq("status", "open");
+
+      if (sellListErr) {
+        console.error("Listed supply check:", sellListErr);
+        return NextResponse.json({ error: "Could not verify listed supply." }, { status: 500 });
+      }
+
+      const listedSupply = (sellRows ?? []).reduce(
+        (sum, row) => sum + Number(row.quantity ?? 0),
+        0
+      );
+      if (quantity > listedSupply) {
+        return NextResponse.json(
+          {
+            error:
+              listedSupply === 0
+                ? "No cards are listed for sale for this symbol."
+                : `Order size exceeds listed supply (${listedSupply} available).`,
+          },
+          { status: 400 }
+        );
+      }
+
       const { error: rpcErr } = await adminClient.rpc("place_order", {
         p_user_id: userId,
         p_symbol: symbol,

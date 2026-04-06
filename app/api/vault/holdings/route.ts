@@ -35,11 +35,35 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const rows = data || [];
+    const cardIds = [...new Set(rows.map((r) => (r as { card_id?: string | null }).card_id).filter(Boolean))] as string[];
+
+    let catalogImageByCardId: Record<string, string | null> = {};
+    if (cardIds.length > 0) {
+        const { data: cardRows } = await supabaseAdmin
+            .from("cards")
+            .select("id, image_url, image_url_hi")
+            .in("id", cardIds);
+        for (const c of cardRows ?? []) {
+            const rec = c as { id: string; image_url: string | null; image_url_hi: string | null };
+            const url = (rec.image_url_hi || rec.image_url || "").trim() || null;
+            catalogImageByCardId[rec.id] = url;
+        }
+    }
+
     // Map to frontend-friendly format
-    const holdings = (data || []).map((row: Record<string, unknown>) => {
+    const holdings = rows.map((row: Record<string, unknown>) => {
+        const cid = (row.card_id as string) ?? null;
+        const catalogUrl = cid ? catalogImageByCardId[cid] ?? null : null;
+        const vaultUrl = (row.image_url as string | null)?.trim() || null;
+        const imageUrl =
+            vaultUrl ||
+            catalogUrl ||
+            `/cards/${String(row.symbol)}.svg`;
+
         return {
             id: row.id,
-            cardId: (row.card_id as string) ?? null,
+            cardId: cid,
             name: (row.name as string) || "Unknown Card",
             symbol: row.symbol,
             grade: (row.psa_grade as number) || 9,
@@ -49,7 +73,7 @@ export async function GET(req: NextRequest) {
             status: row.status,
             dateDeposited: new Date(row.created_at as string).toISOString().split("T")[0],
             certNumber: (row.cert_number as string) || "Pending grading",
-            imageUrl: (row.image_url as string) || `/cards/${row.symbol}.svg`,
+            imageUrl,
             rawImageUrl: (row.raw_image_url as string) || undefined,
             listingPrice: row.listing_price ? Number(row.listing_price) : undefined,
         };

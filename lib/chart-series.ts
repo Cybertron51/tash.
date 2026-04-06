@@ -20,9 +20,33 @@ export const RANGE_CONFIGS: Record<TimeRange, { bars: number; intervalMs: number
 /** Match prior mock sparkline density (~20 hourly samples). */
 export const SPARKLINE = { bars: 20, intervalMs: ONE_HOUR_MS };
 
+/** ~7 days in ~20 buckets — aligns list sparklines with 7D % change. */
+export const SPARKLINE_WEEK = {
+  bars: 20,
+  intervalMs: Math.round((7 * ONE_DAY_MS) / 19),
+};
+
 export interface ChartPoint {
   time: number;
   price: number;
+}
+
+/** List/market sparklines: max points after building the same series as the 1W price chart. */
+export const SPARKLINE_LIST_MAX_POINTS = 42;
+
+/** Evenly sample indices so first/last buckets (and times) stay aligned with the full chart. */
+export function downsampleChartPoints(points: ChartPoint[], maxPoints: number): ChartPoint[] {
+  if (maxPoints < 2 || points.length <= maxPoints) {
+    return points.slice();
+  }
+  const n = points.length;
+  const out: ChartPoint[] = [];
+  const last = n - 1;
+  for (let k = 0; k < maxPoints; k++) {
+    const i = Math.round((k / (maxPoints - 1)) * last);
+    out.push({ ...points[i]! });
+  }
+  return out;
 }
 
 /** Hard clamp on trade-filled prices vs catalog anchor (prevents absurd % moves from bad prints). */
@@ -203,6 +227,76 @@ export function anchorSeriesTerminalToCatalog(points: ChartPoint[], anchorPrice:
   const out = points.slice();
   const i = out.length - 1;
   out[i] = { time: out[i]!.time, price: anchorPrice };
+  return out;
+}
+
+const LIST_SPARKLINE_MAX_NET_BASE = 0.15;
+const LIST_SPARKLINE_JITTER_LO = 0.88;
+const LIST_SPARKLINE_JITTER_HI = 1.12;
+
+export type RegulateListSparklineOptions = {
+  /** Median catalog anchor among peers in this category (batch); tightens cap when spot is far from norm. */
+  categoryMedian?: number | null;
+};
+
+/**
+ * List sparklines only: after catalog terminal anchor, cap net (first→last) move so stale
+ * `price_history` cannot imply thousand-% swings. Rescales interior buckets; seed (e.g. `cardId|symbol`)
+ * jitter so rows don’t share identical cliffs. Stays inside `TRADE_DEVIATION_CLAMP` band.
+ */
+export function regulateListSparklineNetMove(
+  points: ChartPoint[],
+  terminalPrice: number,
+  seedKey: string,
+  opts?: RegulateListSparklineOptions
+): ChartPoint[] {
+  if (points.length < 2 || !(terminalPrice > 0)) return points.slice();
+
+  const firstPrice = points[0]!.price;
+  if (!(firstPrice > 0)) return points.slice();
+
+  const relMove = (terminalPrice - firstPrice) / firstPrice;
+  const denom0 = firstPrice - terminalPrice;
+  if (!Number.isFinite(relMove) || Math.abs(denom0) < 1e-12) {
+    return points.slice();
+  }
+
+  const h = stringHash(`${seedKey}|list-reg`);
+  const jitter =
+    LIST_SPARKLINE_JITTER_LO + ((h % 1000) / 1000) * (LIST_SPARKLINE_JITTER_HI - LIST_SPARKLINE_JITTER_LO);
+  let capFrac = LIST_SPARKLINE_MAX_NET_BASE * jitter;
+
+  const med = opts?.categoryMedian;
+  if (med && med > 0) {
+    const relVsCat = Math.abs(terminalPrice - med) / med;
+    if (relVsCat > 0.35) capFrac *= 0.72;
+  }
+
+  if (Math.abs(relMove) <= capFrac) return points.slice();
+
+  const capped = Math.sign(relMove) * capFrac;
+  const newFirst = terminalPrice / (1 + capped);
+  const ratio = (newFirst - terminalPrice) / denom0;
+
+  const out = points.map((p) => {
+    const blended = terminalPrice + (p.price - terminalPrice) * ratio;
+    const clamped = Math.max(
+      terminalPrice * (1 - TRADE_DEVIATION_CLAMP),
+      Math.min(terminalPrice * (1 + TRADE_DEVIATION_CLAMP), blended)
+    );
+    return { time: p.time, price: clamped };
+  });
+  out[0] = { ...out[0]!, time: points[0]!.time, price: newFirst };
+  out[out.length - 1] = { ...out[out.length - 1]!, time: points[points.length - 1]!.time, price: terminalPrice };
+
+  const lo = terminalPrice * (1 - TRADE_DEVIATION_CLAMP);
+  const hi = terminalPrice * (1 + TRADE_DEVIATION_CLAMP);
+  for (let i = 1; i < out.length - 1; i++) {
+    const p = out[i]!.price;
+    out[i] = { ...out[i]!, price: Math.max(lo, Math.min(hi, p)) };
+  }
+  out[0]!.price = Math.max(lo, Math.min(hi, out[0]!.price));
+
   return out;
 }
 

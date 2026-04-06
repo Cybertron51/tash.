@@ -21,17 +21,65 @@ interface PriceChartProps {
   onRangeChange: (range: TimeRange) => void;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function CustomTooltip({ active, payload }: any) {
+/** Human-readable X (time) for the hovered bucket, matched to chart range granularity. */
+function formatChartTooltipTime(ms: number, chartRange: TimeRange): string {
+  const d = new Date(ms);
+  if (chartRange === "1D") {
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  if (chartRange === "1W") {
+    return d.toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  if (chartRange === "1M") {
+    return d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+  /* 3M, 1Y — daily-style buckets */
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function CustomTooltip({
+  active,
+  payload,
+  chartRange,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: PricePoint; value?: number }>;
+  chartRange: TimeRange;
+}) {
   if (!active || !payload?.length) return null;
-  const price = payload[0]?.value ?? 0;
+  const row = payload[0]?.payload;
+  const price = row?.price ?? payload[0]?.value ?? 0;
+  const when =
+    row && typeof row.time === "number" ? formatChartTooltipTime(row.time, chartRange) : null;
+
   return (
     <div
       style={{
         background: colors.surfaceRaised,
         border: `1px solid ${colors.border}`,
         borderRadius: 8,
-        padding: "6px 10px",
+        padding: "8px 12px",
         boxShadow: "0 4px 12px rgba(0,0,0,0.6)",
       }}
     >
@@ -46,7 +94,68 @@ function CustomTooltip({ active, payload }: any) {
       >
         {formatCurrency(price)}
       </p>
+      {when ? (
+        <p
+          style={{
+            color: colors.textMuted,
+            fontSize: 11,
+            fontWeight: 600,
+            margin: "5px 0 0 0",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {when}
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+/** Vertical crosshair + X readout at bottom of plot (Recharts injects `points`, `payload`). */
+function HoverBandCursor(
+  props: {
+    points?: { x: number; y: number }[];
+    payload?: { payload?: PricePoint }[];
+    stroke?: string;
+    strokeWidth?: number;
+    strokeDasharray?: string;
+    chartRange: TimeRange;
+  }
+) {
+  const { points, payload, stroke, strokeWidth, strokeDasharray, chartRange } = props;
+  if (!points || points.length < 2) return null;
+  const [{ x, y: yTop }, { y: yBottom }] = points;
+  const row = payload?.[0]?.payload;
+  const t = row?.time;
+  const when = typeof t === "number" ? formatChartTooltipTime(t, chartRange) : "";
+  const lineStroke =
+    stroke && stroke !== "#ccc" && stroke !== "rgb(204, 204, 204)" ? stroke : colors.border;
+
+  return (
+    <g className="recharts-tooltip-cursor" style={{ pointerEvents: "none" }}>
+      <line
+        x1={x}
+        y1={yTop}
+        x2={x}
+        y2={yBottom}
+        stroke={lineStroke}
+        strokeWidth={strokeWidth}
+        strokeDasharray={strokeDasharray}
+      />
+      {when ? (
+        <text
+          x={x}
+          y={yBottom + 15}
+          textAnchor="middle"
+          fill={colors.textMuted}
+          fontSize={10}
+          fontWeight={600}
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
+          {when}
+        </text>
+      ) : null}
+    </g>
   );
 }
 
@@ -71,7 +180,7 @@ export function PriceChart({
           <AreaChart
             key={range}
             data={data}
-            margin={{ top: 4, right: 0, left: 0, bottom: 0 }}
+            margin={{ top: 4, right: 4, left: 0, bottom: 22 }}
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -83,12 +192,18 @@ export function PriceChart({
             <XAxis dataKey="time" hide />
             <YAxis domain={[min, max]} hide />
             <Tooltip
-              content={<CustomTooltip />}
-              cursor={{
-                stroke: colors.border,
-                strokeWidth: 1,
-                strokeDasharray: "4 4",
-              }}
+              content={({ active, payload }) => (
+                <CustomTooltip active={active} payload={payload} chartRange={range} />
+              )}
+              cursor={
+                <HoverBandCursor
+                  chartRange={range}
+                  stroke={colors.border}
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                />
+              }
+              wrapperStyle={{ outline: "none" }}
             />
             <Area
               type="monotone"

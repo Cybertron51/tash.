@@ -13,18 +13,30 @@ interface DualSliderProps {
 export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.toString() }: DualSliderProps) {
     const trackRef = useRef<HTMLDivElement>(null);
     const [isDragging, setIsDragging] = useState<0 | 1 | null>(null);
+    const rafOnChange = useRef<number | null>(null);
 
-    // Use refs to avoid recreating the pointermove listener on every value change (causes jitter)
-    const valueRef = useRef(value);
+    /** Latest range during drag (must not rely on props until commit — fixes stale flush on pointerup). */
+    const liveValueRef = useRef(value);
     const isDraggingRef = useRef(isDragging);
+    const onChangeRef = useRef(onChange);
 
     useEffect(() => {
-        valueRef.current = value;
+        liveValueRef.current = value;
     }, [value]);
 
     useEffect(() => {
         isDraggingRef.current = isDragging;
     }, [isDragging]);
+
+    useEffect(() => {
+        onChangeRef.current = onChange;
+    }, [onChange]);
+
+    useEffect(() => {
+        return () => {
+            if (rafOnChange.current != null) cancelAnimationFrame(rafOnChange.current);
+        };
+    }, []);
 
     const getPercent = useCallback(
         (val: number) => {
@@ -43,7 +55,7 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
             const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
             const newValue = min + percent * (max - min);
 
-            const nextValue = [...valueRef.current] as [number, number];
+            const nextValue = [...liveValueRef.current] as [number, number];
 
             if (draggingIdx === 0) {
                 nextValue[0] = Math.min(newValue, nextValue[1]);
@@ -51,13 +63,26 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
                 nextValue[1] = Math.max(newValue, nextValue[0]);
             }
 
-            onChange(nextValue);
+            liveValueRef.current = nextValue;
+
+            if (rafOnChange.current != null) cancelAnimationFrame(rafOnChange.current);
+            rafOnChange.current = requestAnimationFrame(() => {
+                rafOnChange.current = null;
+                onChangeRef.current(nextValue);
+            });
         },
-        [min, max, onChange]
+        [min, max]
     );
 
     const handlePointerUp = useCallback(() => {
+        const wasDragging = isDraggingRef.current;
         setIsDragging(null);
+        if (wasDragging === null) return;
+        if (rafOnChange.current != null) {
+            cancelAnimationFrame(rafOnChange.current);
+            rafOnChange.current = null;
+        }
+        onChangeRef.current(liveValueRef.current);
     }, []);
 
     useEffect(() => {

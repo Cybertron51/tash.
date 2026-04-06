@@ -111,14 +111,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      // Only update session state — don't re-fetch profile on every event
       setSession(newSession);
-      if (event === "SIGNED_IN" && newSession?.user && !profileLoadedRef.current) {
-        profileLoadedRef.current = true;
-        fetchProfile(newSession.user.id, newSession.user.email!, newSession.access_token);
-      } else if (event === "SIGNED_OUT") {
+      if (event === "SIGNED_OUT") {
         profileLoadedRef.current = false;
         setUser(null);
+        return;
+      }
+      // Always load profile on sign-in (email/password or OAuth). The old
+      // profileLoadedRef gate could skip this when a session already existed
+      // in memory, leaving user null while cookies were set.
+      if (event === "SIGNED_IN" && newSession?.user) {
+        profileLoadedRef.current = true;
+        void fetchProfile(newSession.user.id, newSession.user.email!, newSession.access_token);
+        return;
+      }
+      // Recovery link establishes a session; ensure profile hydrates after password reset flow.
+      if (event === "PASSWORD_RECOVERY" && newSession?.user) {
+        profileLoadedRef.current = true;
+        void fetchProfile(newSession.user.id, newSession.user.email!, newSession.access_token);
       }
     });
 

@@ -70,7 +70,7 @@ export function CommandMenu({ open, setOpen }: { open: boolean; setOpen: (open: 
 
     const handleSelect = (symbol: string) => {
         setOpen(false);
-        router.push(`/market?symbol=${symbol}`);
+        router.push(`/market?symbol=${encodeURIComponent(symbol)}`);
         setQuery("");
         setResults([]);
     };

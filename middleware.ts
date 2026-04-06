@@ -42,7 +42,7 @@ const SESSION_COOKIE_CHUNK = `sb-${PROJECT_REF}-auth-token.0`;
 
 // ── Public route allowlist ────────────────────────────────────────────────────
 const PUBLIC_PREFIXES = ["/api/", "/auth/", "/privacy", "/_next/", "/favicon", "/cards/", "/mock_"];
-const PUBLIC_EXACT = ["/"];
+const PUBLIC_EXACT = ["/", "/forgot-password"];
 
 function isPublic(pathname: string): boolean {
     if (PUBLIC_EXACT.includes(pathname)) return true;

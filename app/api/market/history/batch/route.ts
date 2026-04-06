@@ -4,11 +4,12 @@ import { buildBatchMarketHistory } from "@/lib/market-history-server";
 import type { TimeRange } from "@/lib/chart-series";
 
 const RANGES: TimeRange[] = ["1D", "1W", "1M", "3M", "1Y"];
-const MAX_IDS = 64;
+const MAX_IDS = 80;
 
 /**
  * GET /api/market/history/batch?cardIds=id1,id2&sparkline=1
- * Optional: &range=1W (ignored when sparkline=1). Buckets are filled from **trades** per symbol only.
+ * Optional: &range=… (ignored when sparkline=1). With sparkline=1, uses the same 1W pipeline as the
+ * Price Chart, then downsamples for list payloads (~42 points).
  */
 export async function GET(req: NextRequest) {
   if (!supabaseAdmin) {

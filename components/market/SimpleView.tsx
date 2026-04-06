@@ -10,17 +10,25 @@
  *   - Market list below for browsing
  */
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Search, ChevronRight, CheckCircle, Loader2, Lock, X, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { VaultHolding } from "@/lib/vault-data";
-import type { AssetData, PricePoint } from "@/lib/market-data";
+import {
+  spotAnchoredSparklineChangePct,
+  spotAnchoredSparklineUp,
+  type AssetData,
+  type PricePoint,
+} from "@/lib/market-data";
 
 import { usePortfolio } from "@/lib/portfolio-context";
 import { DualSlider } from "@/components/ui/DualSlider";
+import { filterSimpleMarketAssets } from "@/lib/market-view-filters";
+import { listedSupplyFromOrderBook, tradableInventoryCount } from "@/lib/order-quantity-limits";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -28,11 +36,18 @@ import { DualSlider } from "@/components/ui/DualSlider";
 
 export interface SimpleViewProps {
   assets: AssetData[];
+  /** Keyed by catalog card id (matches `/api/market/history/batch`). */
   sparklines: Record<string, PricePoint[]>;
+  /** Keyed by catalog card id (realtime price flash). */
   flashMap: Record<string, "up" | "down">;
   onRequestSignIn: () => void;
   showNonTradable: boolean;
   onToggleShowNonTradable: () => void;
+  /**
+   * Deep link from `/market?symbol=…` (e.g. global ⌘K search). Advanced mode uses this on the parent;
+   * Simple mode must handle it here or users land on a generic list.
+   */
+  focusSymbol?: string | null;
 }
 
 type TradeSide = "buy" | "sell";
@@ -100,10 +115,11 @@ function TradeModal({
   onClose: () => void;
 }) {
   const { user, updateBalance } = useAuth();
-  const { refreshPortfolio } = usePortfolio();
+  const { refreshPortfolio, holdings } = usePortfolio();
 
   const [bestBid, setBestBid] = useState(asset.price);
   const [bestAsk, setBestAsk] = useState(asset.price);
+  const [listedSupply, setListedSupply] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -112,6 +128,7 @@ function TradeModal({
         if (!isActive) return;
         setBestBid(book.bids[0]?.price ?? asset.price);
         setBestAsk(book.asks[0]?.price ?? asset.price);
+        setListedSupply(listedSupplyFromOrderBook(book));
       });
     });
     return () => { isActive = false; };
@@ -135,7 +152,23 @@ function TradeModal({
   const fill = getFillLikelihood(price, side, bestBid, bestAsk);
   const total = price * quantity;
   const accent = side === "buy" ? colors.green : colors.red;
+  const maxBuyQty = listedSupply;
+  const maxSellQty = useMemo(
+    () => tradableInventoryCount(holdings, asset.symbol),
+    [holdings, asset.symbol]
+  );
+
+  useEffect(() => {
+    const cap = side === "buy" ? maxBuyQty : maxSellQty;
+    if (cap < 1) return;
+    setQuantity((q) => Math.min(q, cap));
+  }, [side, maxBuyQty, maxSellQty]);
+
   const canAfford = side === "sell" || (user?.cashBalance ?? 0) >= total;
+  const canPlaceBySupply =
+    side === "buy"
+      ? maxBuyQty >= 1 && quantity <= maxBuyQty
+      : maxSellQty >= 1 && quantity <= maxSellQty;
 
   async function handleConfirm() {
     if (!user) return;
@@ -353,8 +386,9 @@ function TradeModal({
             </div>
 
             {/* Quantity */}
-            <div className="mb-4 flex items-center gap-3">
+            <div className="mb-2 flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold"
                 style={{
@@ -372,8 +406,18 @@ function TradeModal({
                 <p className="text-[10px]" style={{ color: colors.textMuted }}>copies</p>
               </div>
               <button
-                onClick={() => setQuantity((q) => q + 1)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold"
+                type="button"
+                disabled={
+                  side === "buy"
+                    ? maxBuyQty < 1 || quantity >= maxBuyQty
+                    : maxSellQty < 1 || quantity >= maxSellQty
+                }
+                onClick={() => {
+                  const cap = side === "buy" ? maxBuyQty : maxSellQty;
+                  if (cap < 1) return;
+                  setQuantity((q) => Math.min(q + 1, cap));
+                }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold disabled:opacity-40"
                 style={{
                   background: colors.surfaceRaised,
                   color: colors.textPrimary,
@@ -383,6 +427,15 @@ function TradeModal({
                 +
               </button>
             </div>
+            <p className="mb-4 text-center text-[10px]" style={{ color: colors.textMuted }}>
+              {side === "buy"
+                ? maxBuyQty < 1
+                  ? "Nothing listed for sale."
+                  : `Listed for sale: ${maxBuyQty}`
+                : maxSellQty < 1
+                  ? "No tradable copies in your vault."
+                  : `You can sell: ${maxSellQty}`}
+            </p>
 
             {/* Total */}
             <div className="mb-2 flex items-center justify-between">
@@ -408,14 +461,19 @@ function TradeModal({
 
             <div className="mt-6 w-full pb-12">
               <button
+                type="button"
                 onClick={handleConfirm}
-                disabled={!canAfford || price <= 0}
+                disabled={!canAfford || !canPlaceBySupply || price <= 0}
                 className="w-full rounded-[12px] py-[16px] text-[15px] font-bold transition-all active:scale-[0.98] disabled:opacity-40"
                 style={{ background: accent, color: colors.textInverse }}
               >
                 {!canAfford
                   ? "Insufficient funds"
-                  : `Place ${side === "buy" ? "bid" : "ask"}`}
+                  : side === "buy" && maxBuyQty < 1
+                    ? "Nothing listed"
+                    : side === "sell" && maxSellQty < 1
+                      ? "Nothing to sell"
+                      : `Place ${side === "buy" ? "bid" : "ask"}`}
               </button>
             </div>
           </>
@@ -449,6 +507,8 @@ function HoldingRow({
   const gainLoss = asset.price - holding.acquisitionPrice;
   const gainPct = (gainLoss / holding.acquisitionPrice) * 100;
   const isGain = gainLoss >= 0;
+  const rowPct = spotAnchoredSparklineChangePct(sparkline, asset.price, asset.changePct);
+  const mktUp = spotAnchoredSparklineUp(sparkline, asset.price, asset.change);
 
   function handleClick() {
     if (!isAuthenticated) { onRequestSignIn(); return; }
@@ -482,7 +542,7 @@ function HoldingRow({
       </div>
       {/* Left: name + grade + gain */}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="truncate text-[14px] font-semibold" style={{ color: colors.textPrimary }}>
             {holding.name}
           </p>
@@ -492,9 +552,17 @@ function HoldingRow({
           >
             PSA {holding.grade}
           </span>
+          {holding.status === "listed" && (
+            <span
+              className="shrink-0 rounded-[4px] px-[6px] py-[2px] text-[9px] font-bold uppercase tracking-wide"
+              style={{ background: colors.goldMuted, color: colors.gold }}
+            >
+              Listed
+            </span>
+          )}
         </div>
-        <p className="mt-[3px] text-[12px] font-semibold" style={{ color: asset.change >= 0 ? colors.green : colors.red }}>
-          {asset.change >= 0 ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+        <p className="mt-[3px] text-[12px] font-semibold" style={{ color: mktUp ? colors.green : colors.red }}>
+          {mktUp ? "+" : ""}{rowPct.toFixed(2)}% 7D
         </p>
         <p className="mt-[2px] text-[11px] tabular-nums" style={{ color: colors.textMuted }}>
           vs cost {isGain ? "+" : ""}{formatCurrency(gainLoss)} ({isGain ? "+" : ""}{gainPct.toFixed(2)}%)
@@ -515,8 +583,8 @@ function HoldingRow({
         >
           {formatCurrency(asset.price, { compact: true })}
         </p>
-        <p className="mt-[2px] tabular-nums text-[11px]" style={{ color: asset.change >= 0 ? colors.green : colors.red }}>
-          {asset.change >= 0 ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+        <p className="mt-[2px] tabular-nums text-[11px]" style={{ color: mktUp ? colors.green : colors.red }}>
+          {mktUp ? "+" : ""}{rowPct.toFixed(2)}% 7D
         </p>
       </div>
 
@@ -548,7 +616,8 @@ function MarketRow({
   onRequestSignIn: () => void;
   isAuthenticated: boolean;
 }) {
-  const isUp = asset.change >= 0;
+  const rowPct = spotAnchoredSparklineChangePct(sparkline, asset.price, asset.changePct);
+  const isUp = spotAnchoredSparklineUp(sparkline, asset.price, asset.change);
 
   return (
     <button
@@ -615,7 +684,7 @@ function MarketRow({
           {formatCurrency(asset.price, { compact: true })}
         </p>
         <p className="mt-[2px] tabular-nums text-[11px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
-          {isUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+          {isUp ? "+" : ""}{rowPct.toFixed(2)}% 7D
         </p>
       </div>
 
@@ -628,9 +697,19 @@ function MarketRow({
 // SimpleView
 // ─────────────────────────────────────────────────────────
 
-export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, showNonTradable, onToggleShowNonTradable }: SimpleViewProps) {
+export function SimpleView({
+  assets,
+  sparklines,
+  flashMap,
+  onRequestSignIn,
+  showNonTradable,
+  onToggleShowNonTradable,
+  focusSymbol = null,
+}: SimpleViewProps) {
+  const router = useRouter();
   const { user, isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
+  const deepLinkConsumed = useRef<string | null>(null);
   const [tradeModal, setTradeModal] = useState<{
     asset: AssetData;
     allowSell: boolean;
@@ -641,26 +720,70 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
   const [minVolume, setMinVolume] = useState<number>(0);
   const [portfolioOpen, setPortfolioOpen] = useState(true);
 
+  useEffect(() => {
+    const raw = focusSymbol?.trim();
+    if (!raw) {
+      deepLinkConsumed.current = null;
+      return;
+    }
+    if (assets.length === 0) return;
+    if (deepLinkConsumed.current === raw) return;
+
+    const match = assets.find((a) => a.symbol === raw);
+    if (!match) return;
+
+    deepLinkConsumed.current = raw;
+    setQuery(match.name);
+    setTradeModal({ asset: match, allowSell: false });
+    router.replace("/market", { scroll: false });
+  }, [focusSymbol, assets, router]);
+
   const { minPrice, maxPrice } = useMemo(() => {
     if (assets.length === 0) return { minPrice: 0, maxPrice: 1000 };
     let min = Infinity;
     let max = -Infinity;
     for (const a of assets) {
-      if (a.price < min) min = a.price;
-      if (a.price > max) max = a.price;
+      const p = Number(a.price);
+      if (!Number.isFinite(p)) continue;
+      if (p < min) min = p;
+      if (p > max) max = p;
     }
-    return { minPrice: Math.floor(min), maxPrice: Math.ceil(max) };
+    if (!Number.isFinite(min) || !Number.isFinite(max)) {
+      return { minPrice: 0, maxPrice: 1000 };
+    }
+    const lo = Math.floor(min);
+    const hi = Math.ceil(max);
+    if (lo === hi) return { minPrice: lo, maxPrice: hi + 1 };
+    return { minPrice: lo, maxPrice: hi };
   }, [assets]);
 
   const activePriceRange = priceRange || [minPrice, maxPrice];
 
+  const handlePriceRangeChange = useCallback((range: [number, number]) => {
+    const [lo, hi] = range;
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+      setPriceRange(null);
+      return;
+    }
+    if (lo <= minPrice && hi >= maxPrice) {
+      setPriceRange(null);
+    } else {
+      setPriceRange(range);
+    }
+  }, [minPrice, maxPrice]);
+
   // Match vault holdings to live asset prices
   const { holdings: vaultHoldings } = usePortfolio();
-  const holdings = useMemo(() =>
-    vaultHoldings.map((h) => ({
-      holding: h,
-      asset: assets.find((a) => a.symbol === h.symbol),
-    })).filter((h): h is { holding: VaultHolding; asset: AssetData } => !!h.asset),
+  const holdings = useMemo(
+    () =>
+      vaultHoldings
+        .map((h) => ({
+          holding: h,
+          asset:
+            (h.cardId ? assets.find((a) => a.id === h.cardId) : undefined) ??
+            assets.find((a) => a.symbol === h.symbol),
+        }))
+        .filter((h): h is { holding: VaultHolding; asset: AssetData } => !!h.asset),
     [assets, vaultHoldings]
   );
 
@@ -672,47 +795,24 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
   const dayGainPct = holdingsValue > 0 ? (dayGain / holdingsValue) * 100 : 0;
   const isDayUp = dayGain >= 0;
 
-  const portfolioSymbols = new Set(vaultHoldings.map((h) => h.symbol));
+  const portfolioSymbols = useMemo(
+    () => new Set(vaultHoldings.map((h) => h.symbol).filter(Boolean)),
+    [vaultHoldings]
+  );
 
-  // Market assets — exclude holdings, filter by search or showNonTradable toggle
-  const marketAssets = useMemo(() => {
-    // 1. Exclude cards already in the user's portfolio
-    const nonPortfolio = assets.filter((a) => !portfolioSymbols.has(a.symbol));
-
-    let result = nonPortfolio;
-
-    // 2. If searching, show all matching cards regardless of liquidity
-    if (query.trim()) {
-      const q = query.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.name.toLowerCase().includes(q) ||
-          a.set.toLowerCase().includes(q) ||
-          a.symbol.toLowerCase().includes(q)
-      );
-    } else {
-      // 3. If not searching, respect the liquidity filter
-      result = showNonTradable ? result : result.filter(a => a.hasLiquidity);
-    }
-
-    // 4. Apply category filter
-    if (categoryFilter !== "all") {
-      result = result.filter((a) => a.category === categoryFilter);
-    }
-
-    // 5. Apply numeric filters
-    if (priceRange) {
-      result = result.filter(a => a.price >= priceRange[0] && a.price <= priceRange[1]);
-    }
-    if (minVolume > 0) {
-      result = result.filter(a => a.volume24h >= minVolume);
-    }
-
-    // Default sort by volume desc
-    result = [...result].sort((a, b) => b.volume24h - a.volume24h);
-
-    return result;
-  }, [assets, query, portfolioSymbols, showNonTradable, categoryFilter, priceRange, minVolume]);
+  const marketAssets = useMemo(
+    () =>
+      filterSimpleMarketAssets({
+        assets,
+        query,
+        portfolioSymbols,
+        showNonTradable,
+        categoryFilter,
+        priceRange,
+        minVolume,
+      }),
+    [assets, query, portfolioSymbols, showNonTradable, categoryFilter, priceRange, minVolume]
+  );
 
   // Keep modal asset price live
   const modalAsset = tradeModal
@@ -753,11 +853,19 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
         >
           <Search size={15} strokeWidth={2} style={{ color: colors.textMuted, flexShrink: 0 }} />
           <input
-            type="text"
+            type="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
             placeholder="Search cards…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent text-[14px] outline-none placeholder:text-[14px]"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.preventDefault();
+            }}
+            className="flex-1 bg-transparent text-[16px] outline-none placeholder:text-[16px] md:text-[14px] md:placeholder:text-[14px]"
             style={{ color: colors.textPrimary }}
           />
           {query && (
@@ -799,7 +907,7 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
             min={minPrice}
             max={maxPrice}
             value={activePriceRange}
-            onChange={setPriceRange}
+            onChange={handlePriceRangeChange}
             formatLabel={(v) => formatCurrency(v, { compact: true })}
           />
         </div>
@@ -851,8 +959,8 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
                   key={holding.id}
                   holding={holding}
                   asset={asset}
-                  sparkline={sparklines[asset.symbol] ?? []}
-                  flash={flashMap[asset.symbol]}
+                  sparkline={sparklines[asset.id] ?? []}
+                  flash={flashMap[asset.id]}
                   onTrade={() => setTradeModal({ asset, allowSell: true })}
                   onRequestSignIn={onRequestSignIn}
                   isAuthenticated={isAuthenticated}
@@ -898,16 +1006,18 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
           {marketAssets.length === 0 ? (
             <div className="px-5 py-8 text-center">
               <p className="text-[14px]" style={{ color: colors.textMuted }}>
-                No cards match &ldquo;{query}&rdquo;
+                {query.trim()
+                  ? `No cards match “${query.trim()}”.`
+                  : "No cards match your filters. Try another category, reset the price slider to the full range, or enable “Show not for sale.”"}
               </p>
             </div>
           ) : (
             marketAssets.map((asset) => (
               <MarketRow
-                key={asset.symbol}
+                key={asset.id}
                 asset={asset}
-                sparkline={sparklines[asset.symbol] ?? []}
-                flash={flashMap[asset.symbol]}
+                sparkline={sparklines[asset.id] ?? []}
+                flash={flashMap[asset.id]}
                 onTrade={() => setTradeModal({ asset, allowSell: false })}
                 onRequestSignIn={onRequestSignIn}
                 isAuthenticated={isAuthenticated}

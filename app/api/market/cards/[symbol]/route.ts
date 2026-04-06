@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
+import { fetchPeerMedianFromDb, synthesizePeerPrice } from "@/lib/peer-price-fallback";
 
 /**
  * GET /api/market/cards/[symbol]
@@ -41,15 +42,42 @@ export async function GET(
     ]);
     const m = metrics.get(rest.id as string);
 
+    let price = (prices.price as number) ?? 0;
+    let change_24h = (prices.change_24h as number) ?? 0;
+    let change_pct_24h = (prices.change_pct_24h as number) ?? 0;
+    let high_24h = (prices.high_24h as number) ?? null;
+    let low_24h = (prices.low_24h as number) ?? null;
+    let change_7d = m?.change_7d ?? 0;
+    let change_pct_7d = m?.change_pct_7d ?? 0;
+
+    if (!(price > 0) && supabaseAdmin) {
+        const med = await fetchPeerMedianFromDb(
+            supabaseAdmin,
+            String(rest.category ?? "other"),
+            Number(rest.psa_grade),
+            rest.id as string
+        );
+        price =
+            med != null
+                ? synthesizePeerPrice(rest.id as string, med)
+                : synthesizePeerPrice(rest.id as string, 25);
+        change_24h = 0;
+        change_pct_24h = 0;
+        change_7d = 0;
+        change_pct_7d = 0;
+        high_24h = price;
+        low_24h = price;
+    }
+
     return NextResponse.json({
         ...rest,
-        price: (prices.price as number) ?? 0,
-        change_24h: (prices.change_24h as number) ?? 0,
-        change_pct_24h: (prices.change_pct_24h as number) ?? 0,
-        change_7d: m?.change_7d ?? 0,
-        change_pct_7d: m?.change_pct_7d ?? 0,
-        high_24h: (prices.high_24h as number) ?? null,
-        low_24h: (prices.low_24h as number) ?? null,
+        price,
+        change_24h,
+        change_pct_24h,
+        change_7d,
+        change_pct_7d,
+        high_24h,
+        low_24h,
         volume_24h: (prices.volume_24h as number) ?? 0,
     });
 }

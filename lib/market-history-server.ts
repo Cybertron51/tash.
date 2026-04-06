@@ -9,11 +9,21 @@ import {
   applyMarketChartDisplayShape,
   buildTradeBucketedSeries,
   clampPriceToAnchorBand,
+  downsampleChartPoints,
   RANGE_CONFIGS,
+  regulateListSparklineNetMove,
   SPARKLINE,
+  SPARKLINE_LIST_MAX_POINTS,
+  type ChartPoint,
   type MarketChartShapeRange,
   type TimeRange,
 } from "@/lib/chart-series";
+import {
+  fetchPeerMedianFromDb,
+  fillZeroAnchorsFromBatchPeers,
+  medianPositive,
+  synthesizePeerPrice,
+} from "@/lib/peer-price-fallback";
 
 /** Trade prints win over catalog history when both exist at the same epoch ms. */
 function mergeTradeAndHistoryPoints(
@@ -209,11 +219,11 @@ export async function anchorPriceForSymbol(admin: SupabaseClient, symbol: string
     .limit(1)
     .maybeSingle();
 
-  if (!row) return 1;
+  if (!row) return synthesizePeerPrice(symbol, 25);
   const prices = row.prices as { price: number } | { price: number }[] | null;
   const p = Array.isArray(prices) ? prices[0]?.price : prices?.price;
   const n = Number(p);
-  return n > 0 ? n : 1;
+  return n > 0 ? n : synthesizePeerPrice(symbol, 25);
 }
 
 /** Trade-only history for a symbol; uses `cardId` only to read `prices` when provided (same symbol row). */
@@ -228,11 +238,30 @@ export async function buildSymbolTradeHistory(
   const sinceMs = nowMs - bars * intervalMs - 120_000;
   const sinceIso = new Date(sinceMs).toISOString();
 
-  let anchorPrice = 1;
+  let anchorPrice = synthesizePeerPrice(symbol, 25);
   if (options?.cardId) {
     const { data: priceRow } = await admin.from("prices").select("price").eq("card_id", options.cardId).maybeSingle();
     const n = Number(priceRow?.price);
-    anchorPrice = n > 0 ? n : (await anchorPriceForSymbol(admin, symbol));
+    if (n > 0) {
+      anchorPrice = n;
+    } else {
+      const { data: meta } = await admin
+        .from("cards")
+        .select("category, psa_grade")
+        .eq("id", options.cardId)
+        .maybeSingle();
+      if (meta?.category != null && meta.psa_grade != null) {
+        const med = await fetchPeerMedianFromDb(
+          admin,
+          String(meta.category),
+          Number(meta.psa_grade),
+          options.cardId
+        );
+        anchorPrice = med != null ? synthesizePeerPrice(options.cardId, med) : synthesizePeerPrice(options.cardId, 25);
+      } else {
+        anchorPrice = await anchorPriceForSymbol(admin, symbol);
+      }
+    }
   } else {
     anchorPrice = await anchorPriceForSymbol(admin, symbol);
   }
@@ -334,12 +363,17 @@ export async function buildBatchMarketHistory(
   const out: Record<string, HistoryRow[]> = {};
   if (cardIds.length === 0) return out;
 
-  const { bars, intervalMs } = options?.sparkline ? SPARKLINE : RANGE_CONFIGS[range];
+  const sparklineUses1W = !!options?.sparkline;
+  const buildRange: TimeRange = sparklineUses1W ? "1W" : range;
+  const { bars, intervalMs } = RANGE_CONFIGS[buildRange];
   const nowMs = Date.now();
   const sinceMs = nowMs - bars * intervalMs - 120_000;
   const sinceIso = new Date(sinceMs).toISOString();
 
-  const { data: cards, error: cardsErr } = await admin.from("cards").select("id, symbol").in("id", cardIds);
+  const { data: cards, error: cardsErr } = await admin
+    .from("cards")
+    .select("id, symbol, category, psa_grade")
+    .in("id", cardIds);
 
   if (cardsErr || !cards?.length) {
     for (const id of cardIds) out[id] = [];
@@ -355,6 +389,31 @@ export async function buildBatchMarketHistory(
     const cid = row.card_id as string;
     const p = Number(row.price);
     if (p > 0) priceByCard.set(cid, p);
+  }
+
+  const anchorFallbackByCard = fillZeroAnchorsFromBatchPeers(
+    cards as { id: string; category: string; psa_grade: number }[],
+    priceByCard
+  );
+
+  const categoryMedianPrice = new Map<string, number>();
+  if (sparklineUses1W) {
+    const anchorsByCat = new Map<string, number[]>();
+    for (const c of cards) {
+      const id = c.id as string;
+      let ap = priceByCard.get(id) ?? 0;
+      if (!(ap > 0)) ap = anchorFallbackByCard.get(id) ?? 0;
+      if (ap > 0) {
+        const k = String((c as { category?: string }).category ?? "other");
+        const arr = anchorsByCat.get(k) ?? [];
+        arr.push(ap);
+        anchorsByCat.set(k, arr);
+      }
+    }
+    for (const [k, arr] of anchorsByCat) {
+      const m = medianPositive(arr);
+      if (m != null) categoryMedianPrice.set(k, m);
+    }
   }
 
   const { data: tradesWindow } = await admin
@@ -407,6 +466,9 @@ export async function buildBatchMarketHistory(
 
       const cid = cards.find((c) => (c.symbol as string) === sym)?.id as string | undefined;
       let a = cid ? priceByCard.get(cid) : undefined;
+      if (!(a && a > 0)) {
+        a = cid ? anchorFallbackByCard.get(cid) : undefined;
+      }
       if (!(a && a > 0)) a = await anchorPriceForSymbol(admin, sym);
       anchorBySymbol.set(sym, a);
     })
@@ -430,7 +492,13 @@ export async function buildBatchMarketHistory(
       continue;
     }
     const sym = card.symbol as string;
-    const anchorPrice = priceByCard.get(id) ?? anchorBySymbol.get(sym) ?? (await anchorPriceForSymbol(admin, sym));
+    const dbPx = priceByCard.get(id) ?? 0;
+    const anchorPrice =
+      dbPx > 0
+        ? dbPx
+        : anchorFallbackByCard.get(id) ??
+          anchorBySymbol.get(sym) ??
+          (await anchorPriceForSymbol(admin, sym));
     const rawPts = tradesBySymbol.get(sym) ?? [];
     const histPts = historyInByCardBatch.get(id) ?? [];
     const mergedRaw = mergeTradeAndHistoryPoints(rawPts, histPts);
@@ -444,8 +512,14 @@ export async function buildBatchMarketHistory(
 
     let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
     series = anchorSeriesTerminalToCatalog(series, anchorPrice);
-    const shapeRange: MarketChartShapeRange = options?.sparkline ? "sparkline" : range;
-    series = applyMarketChartDisplayShape(series, anchorPrice, sym, shapeRange);
+    /** Per-card seed: duplicate `symbol` values share trades/history shape unless id differs. */
+    const listDisplaySeed = `${id}|${sym}`;
+    if (sparklineUses1W) {
+      const catMed = categoryMedianPrice.get(String(card.category ?? "other")) ?? null;
+      series = regulateListSparklineNetMove(series, anchorPrice, listDisplaySeed, { categoryMedian: catMed });
+    }
+    const shapeRange: MarketChartShapeRange = sparklineUses1W ? "1W" : range;
+    series = ApplyMarketChartDisplayShapeForBatch(series, anchorPrice, listDisplaySeed, shapeRange, sparklineUses1W);
 
     out[id] = series.map((p) => ({
       recorded_at: new Date(p.time).toISOString(),
@@ -454,4 +528,19 @@ export async function buildBatchMarketHistory(
   }
 
   return out;
+}
+
+/** List batch: seed must include card id so rows with the same trading symbol get distinct curves. */
+function ApplyMarketChartDisplayShapeForBatch(
+  series: ChartPoint[],
+  anchorPrice: number,
+  displaySeed: string,
+  shapeRange: MarketChartShapeRange,
+  sparklineUses1W: boolean
+) {
+  let s = applyMarketChartDisplayShape(series, anchorPrice, displaySeed, shapeRange);
+  if (sparklineUses1W) {
+    s = downsampleChartPoints(s, SPARKLINE_LIST_MAX_POINTS);
+  }
+  return s;
 }

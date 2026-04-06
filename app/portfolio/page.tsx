@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { X, Search, Plus, Camera, Upload, ArrowDownLeft, ArrowUpRight, Tag } from "lucide-react";
-import Image from "next/image";
+import { HoldingImage } from "@/components/portfolio/HoldingImage";
 
 import { generateHistory, type TimeRange, type AssetData, type PricePoint } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
@@ -43,7 +43,82 @@ type ModalState =
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";
-type StatusFilter = "all" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn" | "disapproved";
+/** Sidebar status chips. `in_vault` = tradable + listed (cards still in custody). */
+type StatusFilter =
+  | "all"
+  | "in_vault"
+  | "listed"
+  | "in_transit"
+  | "pending_authentication"
+  | "shipped"
+  | "received"
+  | "authenticating"
+  | "withdrawn"
+  | "disapproved";
+
+const STATUS_FILTER_LABEL: Record<StatusFilter, string> = {
+  all: "All",
+  in_vault: "In vault",
+  listed: "Listed",
+  in_transit: "Transit",
+  pending_authentication: "Pending",
+  shipped: "Shipped",
+  received: "Received",
+  authenticating: "Authenticating",
+  withdrawn: "Withdrawn",
+  disapproved: "Disapproved",
+};
+
+/** Normalize DB/API status so filters match even with casing or stray whitespace. */
+function normalizeVaultStatus(status: unknown): string {
+  if (status == null || typeof status !== "string") return "";
+  return status.trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function holdingMatchesStatusFilter(h: VaultHolding, filter: StatusFilter): boolean {
+  const st = normalizeVaultStatus(h.status);
+  if (filter === "all") return true;
+  if (filter === "in_vault") return st === "tradable" || st === "listed";
+  return st === filter;
+}
+
+function countHoldingsForChip(holdings: VaultHolding[], key: StatusFilter): number {
+  if (key === "all") return holdings.length;
+  if (key === "in_vault") {
+    return holdings.filter((h) => {
+      const st = normalizeVaultStatus(h.status);
+      return st === "tradable" || st === "listed";
+    }).length;
+  }
+  return holdings.filter((h) => normalizeVaultStatus(h.status) === key).length;
+}
+
+function holdingStatusTablePill(h: VaultHolding): { label: string; detail?: string; bg: string; color: string } {
+  const st = normalizeVaultStatus(h.status);
+  if (st === "listed") {
+    return {
+      label: "Listed",
+      detail: h.listingPrice != null ? formatCurrency(h.listingPrice) : undefined,
+      bg: colors.goldMuted,
+      color: colors.gold,
+    };
+  }
+  if (st === "tradable") {
+    return { label: "In vault", bg: colors.greenMuted, color: colors.green };
+  }
+  const short: Record<string, string> = {
+    pending_authentication: "Pending",
+    shipped: "Shipped",
+    received: "Received",
+    authenticating: "Authenticating",
+    in_transit: "In transit",
+    withdrawn: "Withdrawn",
+    disapproved: "Disapproved",
+    returning: "Returning",
+  };
+  const label = short[st] ?? (st.replace(/_/g, " ") || "Unknown");
+  return { label, bg: colors.surfaceOverlay, color: colors.textMuted };
+}
 
 interface Activity {
   id: string;
@@ -67,7 +142,8 @@ interface DepositForm {
 // ─────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { holdings, openOrders, addHolding, updateHolding, removeHolding, removeOpenOrder } = usePortfolio();
+  const { holdings, openOrders, addHolding, updateHolding, removeHolding, removeOpenOrder, refreshPortfolio } =
+    usePortfolio();
   const { isAuthenticated, session, user, updateBalance } = useAuth();
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,20 +184,31 @@ export default function PortfolioPage() {
   const selected = holdings.find((h) => h.id === selectedId) ?? null;
   const totalValue = holdings.reduce((sum, h) => sum + (priceMap[h.symbol] ?? 0), 0);
 
-  const visibleHoldings = holdings
-    .filter((h) => h.name.toLowerCase().includes(search.toLowerCase()))
-    .filter((h) => statusFilter === "all" || h.status === statusFilter)
-    .sort((a, b) => {
-      if (sortBy === "value") return (priceMap[b.symbol] ?? 0) - (priceMap[a.symbol] ?? 0);
-      if (sortBy === "gain") {
-        const gA = ((priceMap[a.symbol] ?? 0) - a.acquisitionPrice) / a.acquisitionPrice;
-        const gB = ((priceMap[b.symbol] ?? 0) - b.acquisitionPrice) / b.acquisitionPrice;
-        return gB - gA;
-      }
-      if (sortBy === "name") return a.name.localeCompare(b.name);
-      if (sortBy === "date") return new Date(b.dateDeposited).getTime() - new Date(a.dateDeposited).getTime();
-      return 0;
-    });
+  const visibleHoldings = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return holdings
+      .filter((h) => h.name.toLowerCase().includes(q))
+      .filter((h) => holdingMatchesStatusFilter(h, statusFilter))
+      .sort((a, b) => {
+        if (sortBy === "value") return (priceMap[b.symbol] ?? 0) - (priceMap[a.symbol] ?? 0);
+        if (sortBy === "gain") {
+          const gA = ((priceMap[a.symbol] ?? 0) - a.acquisitionPrice) / a.acquisitionPrice;
+          const gB = ((priceMap[b.symbol] ?? 0) - b.acquisitionPrice) / b.acquisitionPrice;
+          return gB - gA;
+        }
+        if (sortBy === "name") return a.name.localeCompare(b.name);
+        if (sortBy === "date") return new Date(b.dateDeposited).getTime() - new Date(a.dateDeposited).getTime();
+        return 0;
+      });
+  }, [holdings, search, statusFilter, sortBy, priceMap]);
+
+  // Clear card selection when it is hidden by the active filter or search.
+  useEffect(() => {
+    if (selectedId == null) return;
+    if (!visibleHoldings.some((x) => x.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, visibleHoldings]);
 
   // ── Action handlers ────────────────────────────────────
   function openListModal(id: string) {
@@ -165,6 +252,7 @@ export default function PortfolioPage() {
         status: "listed",
         listingPrice: price,
       });
+      await refreshPortfolio();
 
       setActivities((prev) => [...prev, {
         id: `a${Date.now()}`,
@@ -220,6 +308,7 @@ export default function PortfolioPage() {
 
       // Revert status
       updateHolding(id, { status: "tradable", listingPrice: undefined });
+      await refreshPortfolio();
 
       setActivities((prev) => [...prev, {
         id: `a${Date.now()}`,
@@ -509,17 +598,18 @@ export default function PortfolioPage() {
             {([
               { key: "all" as const, label: "All" },
               { key: "pending_authentication" as const, label: "Pending" },
-              { key: "in_transit" as const, label: "Transit" }, // Keep for legacy but map to shipped/received mentally or remove
+              { key: "in_transit" as const, label: "Transit" },
               { key: "shipped" as const, label: "Shipped" },
               { key: "authenticating" as const, label: "Authenticating" },
-              { key: "tradable" as const, label: "Vaulted" },
+              { key: "in_vault" as const, label: "In vault" },
               { key: "listed" as const, label: "Listed" },
               { key: "disapproved" as const, label: "Disapproved" },
             ]).map(({ key, label }) => {
-              const count = key === "all" ? holdings.length : holdings.filter((h) => h.status === key).length;
+              const count = countHoldingsForChip(holdings, key);
               const isActive = statusFilter === key;
               return (
                 <button
+                  type="button"
                   key={key}
                   onClick={() => setStatusFilter(key)}
                   style={{
@@ -538,6 +628,7 @@ export default function PortfolioPage() {
 
           {/* "All" / overview row */}
           <button
+            type="button"
             onClick={() => {
               setSelectedId(null);
               if (isMobile) setShowDetailOnMobile(true);
@@ -555,13 +646,17 @@ export default function PortfolioPage() {
               Overview
             </p>
             <p className="text-[10px] uppercase tracking-wider mt-[1px]" style={{ color: colors.textMuted }}>
-              All {holdings.length} cards
+              {search.trim()
+                ? `${STATUS_FILTER_LABEL[statusFilter]} · ${visibleHoldings.length} match search`
+                : `${STATUS_FILTER_LABEL[statusFilter]} · ${visibleHoldings.length} card${visibleHoldings.length !== 1 ? "s" : ""}`}
             </p>
           </button>
 
           {visibleHoldings.length === 0 && (
             <p className="px-4 py-6 text-center text-[12px]" style={{ color: colors.textMuted }}>
-              No cards match &ldquo;{search}&rdquo;
+              {search.trim()
+                ? `No cards match "${search.trim()}".`
+                : `No ${STATUS_FILTER_LABEL[statusFilter].toLowerCase()} cards.`}
             </p>
           )}
           {visibleHoldings.map((holding) => {
@@ -591,9 +686,13 @@ export default function PortfolioPage() {
                     className="shrink-0 overflow-hidden rounded-[4px]"
                     style={{ width: 32, height: 44, border: `1px solid ${colors.border}`, background: colors.surface }}
                   >
-                    <Image
-                      src={holding.imageUrl || `/cards/${holding.symbol}.svg`} alt={holding.name} width={32} height={44}
-                      style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized
+                    <HoldingImage
+                      holding={holding}
+                      assets={assets}
+                      width={32}
+                      height={44}
+                      borderRadius={4}
+                      style={{ display: "block" }}
                     />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -601,7 +700,7 @@ export default function PortfolioPage() {
                       <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
                         {holding.name}
                       </p>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
                         <div
                           className="rounded-[5px] px-[6px] py-[2px]"
                           style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44` }}
@@ -610,6 +709,14 @@ export default function PortfolioPage() {
                             PSA {holding.grade}
                           </span>
                         </div>
+                        {normalizeVaultStatus(holding.status) === "listed" && (
+                          <span
+                            className="rounded-[5px] px-[6px] py-[2px] text-[9px] font-bold uppercase tracking-wide"
+                            style={{ background: colors.goldMuted, color: colors.gold, border: `1px solid ${colors.gold}33` }}
+                          >
+                            Listed
+                          </span>
+                        )}
                       </div>
                     </div>
                     <p className="mt-[1px] truncate text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
@@ -623,7 +730,7 @@ export default function PortfolioPage() {
                         {isGain ? "+" : ""}{formatCurrency(gain)}
                       </span>
                     </div>
-                    {holding.status === "listed" && holding.listingPrice && (
+                    {normalizeVaultStatus(holding.status) === "listed" && holding.listingPrice && (
                       <p className="mt-[2px] tabular-nums text-[10px] font-semibold" style={{ color: colors.gold }}>
                         Listed: {formatCurrency(holding.listingPrice)}
                       </p>
@@ -689,6 +796,7 @@ export default function PortfolioPage() {
           <DetailPanel
             key={selected.id}
             holding={selected}
+            assets={assets}
             currentValue={priceMap[selected.symbol] ?? 0}
             changePct={assets.find((a) => a.symbol === selected.symbol)?.changePct ?? 0}
             priceHistoryCardId={assets.find((a) => a.symbol === selected.symbol)?.id ?? null}
@@ -841,9 +949,9 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
   const maxCatValue = Math.max(...categories.map(([, v]) => v), 1);
 
   // ── Status breakdown ───────────────────────────────────
-  const inVault = holdings.filter((h) => h.status === "tradable").length;
-  const listed = holdings.filter((h) => h.status === "listed").length;
-  const inTransit = holdings.filter((h) => h.status === "in_transit").length;
+  const inVault = holdings.filter((h) => normalizeVaultStatus(h.status) === "tradable").length;
+  const listed = holdings.filter((h) => normalizeVaultStatus(h.status) === "listed").length;
+  const inTransit = holdings.filter((h) => normalizeVaultStatus(h.status) === "in_transit").length;
 
   // ── Top performers ─────────────────────────────────────
   const withPerf = holdings
@@ -1159,12 +1267,12 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
           {/* ── All holdings table ── */}
           <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
             <div
-              className="grid grid-cols-5 border-b px-4 py-2"
+              className="grid grid-cols-[minmax(0,1.4fr)_auto_minmax(0,0.95fr)_0.85fr_0.85fr_0.75fr] gap-x-2 border-b px-4 py-2"
               style={{ borderColor: colors.border, background: colors.surface }}
             >
-              {["Card", "Grade", "Current Value", "Cost Basis", "P&L"].map((h) => (
-                <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                  {h}
+              {["Card", "Grade", "Status", "Value", "Cost", "P&L"].map((col) => (
+                <span key={col} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  {col}
                 </span>
               ))}
             </div>
@@ -1174,23 +1282,34 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
               const gainPct = (gain / h.acquisitionPrice) * 100;
               const isG = gain >= 0;
               const gradeColor = psaGradeColor[h.grade as 8 | 9 | 10] ?? colors.textSecondary;
+              const stPill = holdingStatusTablePill(h);
               return (
                 <button
                   key={h.id}
                   onClick={() => onSelectCard(h.id)}
-                  className="grid grid-cols-5 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
+                  className="grid grid-cols-[minmax(0,1.4fr)_auto_minmax(0,0.95fr)_0.85fr_0.85fr_0.75fr] gap-x-2 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
                   style={{ borderColor: colors.borderSubtle }}
                 >
                   <div className="min-w-0 pr-2">
                     <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>{h.name}</p>
                     <p className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>{h.set}</p>
                   </div>
-                  <div>
+                  <div className="shrink-0">
                     <span
                       className="inline-block rounded-[5px] px-[6px] py-[2px] text-[10px] font-bold tracking-wide"
                       style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44`, color: gradeColor }}
                     >
                       PSA {h.grade}
+                    </span>
+                  </div>
+                  <div className="min-w-0 self-center">
+                    <span
+                      className="inline-block max-w-full truncate rounded-[6px] px-[8px] py-[3px] text-[10px] font-bold"
+                      style={{ background: stPill.bg, color: stPill.color }}
+                      title={stPill.detail ? `${stPill.label} · ${stPill.detail}` : stPill.label}
+                    >
+                      {stPill.label}
+                      {stPill.detail ? ` · ${stPill.detail}` : ""}
                     </span>
                   </div>
                   <span className="tabular-nums text-[13px] font-bold self-center" style={{ color: colors.textPrimary }}>
@@ -1400,6 +1519,7 @@ function OpenOrdersView({ openOrders, onCancelOrder }: { openOrders: import("@/l
 
 interface DetailPanelProps {
   holding: VaultHolding;
+  assets: AssetData[];
   currentValue: number;
   changePct: number;
   priceHistoryCardId: string | null;
@@ -1410,10 +1530,21 @@ interface DetailPanelProps {
   onRemoveCard: (id: string) => void;
 }
 
-function DetailPanel({ holding, currentValue, changePct, priceHistoryCardId, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenSubmitModal, onRemoveCard }: DetailPanelProps) {
+function DetailPanel({
+  holding,
+  assets,
+  currentValue,
+  changePct,
+  priceHistoryCardId,
+  onOpenListModal,
+  onCancelListing,
+  onOpenWithdrawModal,
+  onOpenSubmitModal,
+  onRemoveCard,
+}: DetailPanelProps) {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const officialImage = holding.imageUrl || `/cards/${holding.symbol}.svg`;
-  const images = holding.rawImageUrl ? [officialImage, holding.rawImageUrl] : [officialImage];
+  const hasRaw = !!(holding.rawImageUrl?.trim() && holding.rawImageUrl !== holding.imageUrl);
+  const imageSlots = hasRaw ? 2 : 1;
 
   const [range, setRange] = useState<TimeRange>("1M");
   const [chartData, setChartData] = useState<PricePoint[]>([{ time: Date.now(), price: currentValue }]);
@@ -1466,7 +1597,7 @@ function DetailPanel({ holding, currentValue, changePct, priceHistoryCardId, onO
     tradable: { label: "In Vault", bg: colors.greenMuted, color: colors.green },
     in_transit: { label: "In Transit", bg: "rgba(245,200,66,0.15)", color: "#F5C842" }, // legacy/fallback for withdrawal
     withdrawn: { label: "Withdrawn", bg: colors.surfaceOverlay, color: colors.textMuted },
-    listed: { label: "Listed for Sale", bg: colors.surface, color: colors.textSecondary },
+    listed: { label: "Listed for Sale", bg: colors.goldMuted, color: colors.gold },
     returning: { label: "Returning", bg: "rgba(59,130,246,0.15)", color: "#3B82F6" },
     disapproved: { label: "Disapproved", bg: "rgba(255,59,48,0.15)", color: colors.red },
   };
@@ -1481,27 +1612,52 @@ function DetailPanel({ holding, currentValue, changePct, priceHistoryCardId, onO
           <div className="flex flex-col items-center gap-2">
             <div
               onClick={() => {
-                if (images.length > 1) {
-                  setActiveImageIndex((prev) => (prev + 1) % images.length);
+                if (imageSlots > 1) {
+                  setActiveImageIndex((prev) => (prev + 1) % imageSlots);
                 }
               }}
               className="shrink-0 overflow-hidden rounded-[8px]"
               style={{
                 width: 120, height: 168, border: `1px solid ${colors.border}`, background: colors.surface,
-                cursor: images.length > 1 ? "pointer" : "default"
+                cursor: imageSlots > 1 ? "pointer" : "default"
               }}
             >
-              {images[activeImageIndex] && (
-                <Image
-                  src={images[activeImageIndex]!} alt={holding.name} width={120} height={168}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized
+              {activeImageIndex === 0 ? (
+                <HoldingImage
+                  holding={holding}
+                  assets={assets}
+                  width={120}
+                  height={168}
+                  borderRadius={8}
+                  background={colors.surface}
+                  style={{ display: "block" }}
+                />
+              ) : hasRaw ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={holding.rawImageUrl!}
+                  alt=""
+                  width={120}
+                  height={168}
+                  referrerPolicy="no-referrer"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                />
+              ) : (
+                <HoldingImage
+                  holding={holding}
+                  assets={assets}
+                  width={120}
+                  height={168}
+                  borderRadius={8}
+                  background={colors.surface}
+                  style={{ display: "block" }}
                 />
               )}
             </div>
             {/* Carousel dots */}
-            {images.length > 1 && (
+            {imageSlots > 1 && (
               <div className="flex gap-1.5">
-                {images.map((_, i) => (
+                {Array.from({ length: imageSlots }, (_, i) => (
                   <div
                     key={i}
                     style={{

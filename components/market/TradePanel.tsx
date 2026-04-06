@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { CheckCircle, Lock, Loader2 } from "lucide-react";
 import { colors } from "@/lib/theme";
@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { api } from "@/lib/api";
 import type { AssetData, OrderBook as OrderBookData } from "@/lib/market-data";
+import { listedSupplyFromOrderBook, tradableInventoryCount } from "@/lib/order-quantity-limits";
 
 interface TradePanelProps {
   asset: AssetData;
@@ -29,7 +30,7 @@ interface OrderResult {
 
 export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProps) {
   const { user, isAuthenticated, updateBalance } = useAuth();
-  const { addHolding, refreshPortfolio } = usePortfolio();
+  const { addHolding, refreshPortfolio, holdings } = usePortfolio();
 
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
@@ -78,6 +79,18 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
     }
   }, [side, asset.name, asset.set, asset.category, justTCGPrice, isFetchingPrice]);
 
+  const maxBuyQty = useMemo(() => listedSupplyFromOrderBook(orderBook), [orderBook]);
+  const maxSellQty = useMemo(
+    () => tradableInventoryCount(holdings, asset.symbol),
+    [holdings, asset.symbol]
+  );
+
+  useEffect(() => {
+    const cap = side === "buy" ? maxBuyQty : maxSellQty;
+    if (cap < 1) return;
+    setQuantity((q) => Math.min(q, cap));
+  }, [side, maxBuyQty, maxSellQty]);
+
   const lowestAsk = orderBook?.asks.length ? orderBook.asks[0].price : null;
   const highestBid = orderBook?.bids.length ? orderBook.bids[0].price : null;
 
@@ -94,6 +107,9 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
   const accentMuted = isBuy ? colors.greenMuted : colors.redMuted;
 
   const canAfford = !isAuthenticated || (user?.cashBalance ?? 0) >= total;
+  const canPlaceBySupply =
+    isBuy ? maxBuyQty >= 1 && quantity <= maxBuyQty : maxSellQty >= 1 && quantity <= maxSellQty;
+  const canReview = canAfford && canPlaceBySupply;
 
   // Fill likelihood
   let fillLikelihood = null;
@@ -152,6 +168,8 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
       onRequestSignIn?.();
       return;
     }
+    if (isBuy && maxBuyQty < 1) return;
+    if (!isBuy && maxSellQty < 1) return;
     setStage("review");
   }
 
@@ -466,6 +484,7 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
         </label>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none"
             style={{
@@ -483,8 +502,18 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
             {quantity}
           </span>
           <button
-            onClick={() => setQuantity((q) => q + 1)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none"
+            type="button"
+            disabled={
+              side === "buy"
+                ? maxBuyQty < 1 || quantity >= maxBuyQty
+                : maxSellQty < 1 || quantity >= maxSellQty
+            }
+            onClick={() => {
+              const cap = side === "buy" ? maxBuyQty : maxSellQty;
+              if (cap < 1) return;
+              setQuantity((q) => Math.min(q + 1, cap));
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none disabled:opacity-40"
             style={{
               background: colors.surfaceRaised,
               color: colors.textPrimary,
@@ -494,6 +523,15 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
             +
           </button>
         </div>
+        <p className="mt-1.5 px-0.5 text-[10px]" style={{ color: colors.textMuted }}>
+          {side === "buy"
+            ? maxBuyQty < 1
+              ? "Nothing listed for sale."
+              : `Listed for sale: ${maxBuyQty}`
+            : maxSellQty < 1
+              ? "No tradable copies in your vault."
+              : `You can sell: ${maxSellQty}`}
+        </p>
       </div>
 
       {/* Summary */}
@@ -533,11 +571,17 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
       ) : (
         <button
           onClick={handleReview}
-          disabled={!canAfford}
+          disabled={!canReview}
           className="w-full rounded-[10px] py-[10px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-40"
           style={{ background: accent, color: colors.textInverse }}
         >
-          {!canAfford ? "Insufficient Funds" : `Review ${isBuy ? "Purchase" : "Sale"}`}
+          {!canAfford
+            ? "Insufficient Funds"
+            : isBuy && maxBuyQty < 1
+              ? "Nothing Listed"
+              : !isBuy && maxSellQty < 1
+                ? "Nothing to Sell"
+                : `Review ${isBuy ? "Purchase" : "Sale"}`}
         </button>
       )}
     </div>

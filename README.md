@@ -2,6 +2,8 @@
 
 Ledger is a Next.js web application built with a modern stack including Supabase for backend services, Stripe for payments, and Gemini/Google Cloud Vision for card scanning and grading.
 
+**New here?** See **[LOCAL_SETUP.md](./LOCAL_SETUP.md)** for a full start-to-finish guide (clone, `.env`, Supabase, run locally).
+
 ## Prerequisites
 
 Before you start, make sure you have the following installed:

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
+import { applyPeerPriceFallback } from "@/lib/peer-price-fallback";
 
 /**
  * GET /api/market/cards
@@ -53,7 +54,12 @@ export async function GET(req: NextRequest) {
         };
     });
 
-    type CardRow = (typeof cards)[number] & { id: string; symbol: string };
+    type CardRow = (typeof cards)[number] & {
+        id: string;
+        symbol: string;
+        category: string;
+        psa_grade: number;
+    };
     const withIds = cards as CardRow[];
 
     const metrics = await batchSevenDayChangeFromTrades(
@@ -70,5 +76,24 @@ export async function GET(req: NextRequest) {
         };
     });
 
-    return NextResponse.json(merged);
+    const needsSynthetic = new Set(
+        merged.filter((c) => !(Number(c.price) > 0)).map((c) => String(c.id))
+    );
+
+    const withPeers = applyPeerPriceFallback(
+        merged.map((c) => ({
+            ...c,
+            category: String(c.category ?? "other"),
+            psa_grade: Number(c.psa_grade),
+            price: Number(c.price),
+        }))
+    );
+
+    const out = withPeers.map((c) =>
+        needsSynthetic.has(String(c.id))
+            ? { ...c, change_7d: 0, change_pct_7d: 0 }
+            : c
+    );
+
+    return NextResponse.json(out);
 }

@@ -12,8 +12,14 @@ import { getMarketCards } from "@/lib/db/cards";
 import { fetchPSAImage, fetchPSAMetadata, uploadCardImageToStorage, uploadRawScanToStorage } from "@/lib/psa";
 import { fetchJustTCGPrice } from "@/lib/justtcg";
 import { supabaseAdmin, verifyAuth } from "@/lib/supabase-admin";
+import { deriveCardCategory, type CardCategory } from "@/lib/card-category";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_GENERATIVE_API_KEY ?? "");
+
+function normalizeAiCategory(c: unknown): CardCategory | null {
+  if (c === "pokemon" || c === "sports" || c === "mtg" || c === "other") return c;
+  return null;
+}
 
 function buildPrompt() {
   return `Analyze this image of a trading card slab and return ONLY a single JSON object — no markdown, no code fences, no explanation.
@@ -42,7 +48,7 @@ Valid values:
 - setName: Read the set/brand name from the PSA label (e.g. "Base Set", "Pokemon Game", "Topps Chrome"). If not readable, make your best guess based on the card art. Never return null.
 - year: Read the year from the PSA label. If not readable, estimate from the card design. Return as a number.
 - psaGrade: Read the numeric grade from the PSA label. The grade is the large number on the label, often preceded by a text descriptor like "GEM MT" (10), "MINT" (9), "NM-MT" (8), "NM" (7), etc. Return just the number (e.g. 10, 9, 8). If not readable, return null.
-- category: "pokemon" if it's a Pokémon card, "sports" if it's a sports card (baseball, basketball, football, etc), "other" for anything else.
+- category: must be exactly one of "pokemon" | "sports" | "mtg" | "other". Use "sports" for basketball (NBA/WNBA), football, baseball, hockey, Panini/Topps slabs, etc. Use "pokemon" only for Pokémon TCG. Never use "pokemon" for player-name-only sports labels.
 - cleanSearchName: provide a clean, simplified name for a pricing search (e.g. if the label says "FA/PIKACHU", return "Pikachu").
 - cleanSearchSet: provide a clean, simplified set name (e.g. if the label says "POKEMON SWORD AND SHIELD CROWN ZENITH", just return "Crown Zenith").
 
@@ -65,6 +71,7 @@ export async function POST(req: NextRequest) {
       const name = psaData.Subject || psaData.Player || "Unknown Card";
       const set = psaData.CardSet || psaData.Brand || "Unknown Set";
 
+      const brandStr = (psaData.Brand || "") as string;
       const card: any = {
         isFullSlabVisible: true,
         certNumber,
@@ -75,25 +82,11 @@ export async function POST(req: NextRequest) {
         estimatedGrade: psaData.CardGrade
           ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || 9
           : 9,
-        category: "pokemon",
+        category: deriveCardCategory(name, set, brandStr),
         // PSA often uses "FA" for Full Art, "H" for Holo, etc.
         searchName: name.replace(/\bFA\b/g, "Full Art").replace(/\bH\b/g, "Holo").replace(/\//g, " ").trim(),
         searchSet: set.replace(/POKEMON SWORD AND SHIELD/i, "").trim(),
       };
-
-      const subject = (psaData.Subject || "").toLowerCase();
-      const cardSet = (psaData.CardSet || "").toLowerCase();
-      const brand = (psaData.Brand || "").toLowerCase();
-
-      if (subject.includes("pokemon") || cardSet.includes("pokemon") || brand.includes("pokemon")) {
-        card.category = "pokemon";
-      } else if (brand.includes("panini") || brand.includes("topps") || brand.includes("upper deck") || brand.includes("bowman") || brand.includes("fleer")) {
-        card.category = "sports";
-      } else if (subject.includes("magic") || cardSet.includes("magic") || cardSet.includes("mtg") || brand.includes("wizards")) {
-        card.category = "mtg";
-      } else {
-        card.category = "other";
-      }
 
       return card;
     }
@@ -143,17 +136,20 @@ export async function POST(req: NextRequest) {
         const isCleanBg = !!aiResult.isCleanBackground;
         const isFilling = !!aiResult.isFillingScreen;
 
+        const aiName = aiResult.cardName || "Unknown Card";
+        const aiSet = aiResult.setName || "Unknown Set";
         card = {
           isFullSlabVisible: isFullSlab,
           isCleanBackground: isCleanBg,
           isFillingScreen: isFilling,
           certNumber: extractedCert,
-          name: aiResult.cardName || "Unknown Card",
-          set: aiResult.setName || "Unknown Set",
+          name: aiName,
+          set: aiSet,
           year: aiResult.year || null,
           cardNumber: null,
           estimatedGrade: aiResult.psaGrade || 9,
-          category: aiResult.category || "pokemon",
+          category:
+            normalizeAiCategory(aiResult.category) ?? deriveCardCategory(aiName, aiSet, ""),
           searchName: aiResult.cleanSearchName || aiResult.cardName,
           searchSet: aiResult.cleanSearchSet || aiResult.setName,
         };

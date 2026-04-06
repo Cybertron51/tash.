@@ -22,6 +22,8 @@ import {
   generateHistory,
   generateSparkline,
   recomputeAssetChangeForNewPrice,
+  spotAnchoredSparklineChangePct,
+  spotAnchoredSparklineUp,
   tickPrice,
   type AssetData,
   type TimeRange,
@@ -37,6 +39,11 @@ import { TradePanel } from "@/components/market/TradePanel";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
+import {
+  filterAdvancedVisibleAssets,
+  resolveAdvancedSelectedAsset,
+  selectionFromUrlSymbol,
+} from "@/lib/market-view-filters";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 type ViewMode = "simple" | "advanced";
@@ -123,29 +130,24 @@ function MarketPageContent() {
     localStorage.setItem("tash-view-mode", m);
   }
 
-  const visibleAssets = useMemo(() => {
-    let result = showNonTradable ? assets : assets.filter(a => a.hasLiquidity);
-
-    if (categoryFilter !== "all") {
-      result = result.filter(a => a.category === categoryFilter);
-    }
-
-    if (priceRange) {
-      result = result.filter(a => a.price >= priceRange[0] && a.price <= priceRange[1]);
-    }
-    if (minVolume > 0) {
-      result = result.filter(a => a.volume24h >= minVolume);
-    }
-
-    result = [...result].sort((a, b) => b.volume24h - a.volume24h);
-
-    return result;
-  }, [assets, showNonTradable, categoryFilter, priceRange, minVolume]);
+  const visibleAssets = useMemo(
+    () =>
+      filterAdvancedVisibleAssets({
+        assets,
+        showNonTradable,
+        categoryFilter,
+        priceRange,
+        minVolume,
+      }),
+    [assets, showNonTradable, categoryFilter, priceRange, minVolume]
+  );
 
   /** Resolve from full catalog so portfolio picks still match detail when the card is filtered out of the visible list. */
-  const selected =
-    assets.find((a) => a.symbol === selectedSymbol) ?? visibleAssets[0] ?? null;
-  const isUp = selected ? selected.change >= 0 : false;
+  const selected = resolveAdvancedSelectedAsset({
+    assets,
+    selectedSymbol,
+    visibleAssets,
+  });
 
   // ── Initial load from Supabase ─────────────────────────
   useEffect(() => {
@@ -170,17 +172,10 @@ function MarketPageContent() {
 
         const urlSymbol = searchParams?.get("symbol");
         if (urlSymbol) {
-          const target = newAssets.find(a => a.symbol === urlSymbol);
-          if (target) {
-            setSelectedSymbol(urlSymbol);
-            if (!target.hasLiquidity) {
-              setShowNonTradable(true);
-            }
-          } else {
-            // Default to first tradable or first overall
-            const initialVisible = newAssets.filter(a => a.hasLiquidity);
-            const fallback = initialVisible[0]?.symbol || newAssets[0]?.symbol || "";
-            setSelectedSymbol(fallback);
+          const { selectedSymbol: sym, revealNonTradable } = selectionFromUrlSymbol(urlSymbol, newAssets);
+          setSelectedSymbol(sym);
+          if (revealNonTradable) {
+            setShowNonTradable(true);
           }
         } else {
           const initialVisible = newAssets.filter(a => a.hasLiquidity);
@@ -227,12 +222,12 @@ function MarketPageContent() {
               if (oldAsset.price !== newPrice) {
                 // Trigger flash animation
                 const flashDir = newPrice > oldAsset.price ? "up" : "down";
-                setFlashMap((fm) => ({ ...fm, [oldAsset.symbol]: flashDir }));
+                setFlashMap((fm) => ({ ...fm, [oldAsset.id]: flashDir }));
                 setTimeout(() => {
                   if (isMounted) {
                     setFlashMap((fm) => {
                       const newFm = { ...fm };
-                      delete newFm[oldAsset.symbol];
+                      delete newFm[oldAsset.id];
                       return newFm;
                     });
                   }
@@ -269,11 +264,18 @@ function MarketPageContent() {
     };
   }, []);
 
-  // ── Chart data ─────────────────────────────────────────
-  const [chartData, setChartData] = useState<PricePoint[]>([]);
+  // ── Chart data (scoped to card + range so header % matches the active pill) ──
+  const [chartSeries, setChartSeries] = useState<{
+    cardId: string;
+    range: TimeRange;
+    points: PricePoint[];
+  } | null>(null);
 
   useEffect(() => {
-    if (!selected) return;
+    if (!selected) {
+      setChartSeries(null);
+      return;
+    }
 
     let isMounted = true;
 
@@ -288,28 +290,81 @@ function MarketPageContent() {
         price: point.price
       }));
 
-      // In case we don't have enough history, fallback to at least the current price
-      if (formatted.length === 0) {
-        setChartData([{ time: Date.now(), price: selected!.price }]);
-      } else {
-        setChartData(formatted);
-      }
+      const points =
+        formatted.length === 0
+          ? [{ time: Date.now(), price: selected!.price }]
+          : formatted;
+
+      setChartSeries({
+        cardId: selected!.id,
+        range,
+        points,
+      });
     }
 
     fetchHistory();
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+    };
   }, [selected?.id, range]);
 
-  /** Match chart fill/stroke to the loaded series (same window as range pills), not only 7D sign. */
-  const chartIsUp = useMemo(() => {
-    if (chartData.length >= 2) {
-      const first = chartData[0]!.price;
-      const last = chartData[chartData.length - 1]!.price;
-      return last >= first;
+  /** Points for PriceChart — empty while a new range is loading so we don't show the wrong window. */
+  const chartPointsForUi = useMemo(() => {
+    if (!selected || !chartSeries || chartSeries.cardId !== selected.id || chartSeries.range !== range) {
+      return [] as PricePoint[];
     }
-    return selected ? selected.change >= 0 : false;
-  }, [chartData, selected]);
+    return chartSeries.points;
+  }, [selected, chartSeries, range]);
+
+  const priceChartDisplayPoints = useMemo(() => {
+    if (chartPointsForUi.length > 0) return chartPointsForUi;
+    if (selected) return [{ time: Date.now(), price: selected.price }];
+    return [] as PricePoint[];
+  }, [chartPointsForUi, selected]);
+
+  /** Upper-right change: start of loaded series → live spot, label matches range pill (catalog fallback when series missing). */
+  const rangeWindowMetrics = useMemo(() => {
+    if (!selected) {
+      return { change: 0, changePct: 0, up: true, label: "1W" as const, pending: false as const };
+    }
+    const rangeLoadPending =
+      !!selected &&
+      (!chartSeries ||
+        chartSeries.cardId !== selected.id ||
+        chartSeries.range !== range);
+
+    if (rangeLoadPending) {
+      return { change: 0, changePct: 0, up: true, label: range, pending: true as const };
+    }
+
+    const synced =
+      chartSeries &&
+      chartSeries.cardId === selected.id &&
+      chartSeries.range === range;
+    const pts = synced ? chartSeries.points : null;
+    if (pts && pts.length >= 2) {
+      const start = pts[0]!.price;
+      const end = selected.price;
+      const change = end - start;
+      const changePct = start > 0 ? (change / start) * 100 : 0;
+      return { change, changePct, up: change >= 0, label: range, pending: false as const };
+    }
+    if (pts && pts.length === 1) {
+      return { change: 0, changePct: 0, up: true, label: range, pending: false as const };
+    }
+    return {
+      change: selected.change,
+      changePct: selected.changePct,
+      up: selected.change >= 0,
+      label: "7D" as const,
+      pending: false as const,
+    };
+  }, [selected, chartSeries, range]);
+
+  const chartIsUp = rangeWindowMetrics.pending
+    ? (selected?.change ?? 0) >= 0
+    : rangeWindowMetrics.up;
 
   // ── Sparklines from trade + history batch (fallback: flat synthetic) ──
   const [sparklines, setSparklines] = useState<Record<string, PricePoint[]>>({});
@@ -332,28 +387,40 @@ function MarketPageContent() {
     (async () => {
       try {
         const { apiGet } = await import("@/lib/api");
-        const ids = snap.map((a) => a.id).join(",");
-        const batch = await apiGet<Record<string, { recorded_at: string; price: number }[]>>(
-          `/api/market/history/batch?cardIds=${encodeURIComponent(ids)}&sparkline=1`
-        );
+        const chunkSize = 50;
+        const batch: Record<string, { recorded_at: string; price: number }[]> = {};
+        for (let i = 0; i < snap.length; i += chunkSize) {
+          const slice = snap.slice(i, i + chunkSize);
+          const ids = slice.map((a) => a.id).join(",");
+          const part = await apiGet<Record<string, { recorded_at: string; price: number }[]>>(
+            `/api/market/history/batch?cardIds=${encodeURIComponent(ids)}&sparkline=1`
+          );
+          Object.assign(batch, part);
+        }
         if (!alive) return;
         const next: Record<string, PricePoint[]> = {};
         for (const a of snap) {
           const rows = batch[a.id];
-          if (rows && rows.length >= 2) {
-            next[a.symbol] = rows.map((r) => ({
-              time: new Date(r.recorded_at).getTime(),
-              price: r.price,
-            }));
-          } else {
-            next[a.symbol] = generateSparkline(a.price, a.changePct, a.symbol);
-          }
+          const pts =
+            rows && rows.length >= 2
+              ? rows.map((r) => ({
+                  time: new Date(r.recorded_at).getTime(),
+                  price: r.price,
+                }))
+              : null;
+          /** Card id, not symbol — avoids collisions when two listings share a ticker. */
+          next[a.id] =
+            pts && pts.length >= 2
+              ? pts
+              : generateSparkline(a.price, a.changePct, `${a.symbol}|${a.id}`);
         }
         setSparklines(next);
       } catch {
         if (!alive) return;
         setSparklines(
-          Object.fromEntries(snap.map((a) => [a.symbol, generateSparkline(a.price, a.changePct, a.symbol)]))
+          Object.fromEntries(
+            snap.map((a) => [a.id, generateSparkline(a.price, a.changePct, `${a.symbol}|${a.id}`)])
+          )
         );
       }
     })();
@@ -435,6 +502,7 @@ function MarketPageContent() {
           onRequestSignIn={() => setShowSignIn(true)}
           showNonTradable={showNonTradable}
           onToggleShowNonTradable={() => setShowNonTradable(!showNonTradable)}
+          focusSymbol={searchParams.get("symbol")}
         />
 
         {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
@@ -561,11 +629,22 @@ function MarketPageContent() {
         <div className="flex-1 overflow-y-auto">
           {/* ── My Portfolio (collapsible) ── */}
           {holdings.length > 0 && (
-            <div className="border-b" style={{ borderColor: colors.border }}>
+            <div
+              className="mx-3 mt-3 mb-1 shrink-0 overflow-hidden rounded-[12px] border"
+              style={{
+                borderColor: colors.border,
+                background: colors.surface,
+                boxShadow: `inset 0 1px 0 0 ${colors.green}18`,
+              }}
+            >
               <button
                 onClick={() => setPortfolioOpen((o) => !o)}
-                className="flex w-full items-center justify-between px-4 py-[8px] cursor-pointer"
-                style={{ background: colors.surface, border: "none" }}
+                className="flex w-full items-center justify-between px-3 py-[9px] cursor-pointer"
+                style={{
+                  background: colors.surfaceRaised,
+                  border: "none",
+                  borderBottom: `1px solid ${colors.borderSubtle}`,
+                }}
               >
                 <div className="flex items-center gap-[6px]">
                   <BarChart2 size={11} strokeWidth={2.5} style={{ color: colors.green }} />
@@ -579,11 +658,15 @@ function MarketPageContent() {
                 }
               </button>
               {portfolioOpen && holdings.map((h) => {
-                const asset = assets.find((a) => a.symbol === h.symbol);
+                const asset =
+                  (h.cardId ? assets.find((a) => a.id === h.cardId) : undefined) ??
+                  assets.find((a) => a.symbol === h.symbol);
                 if (!asset) return null;
-                const assetUp = asset.change >= 0;
+                const line = sparklines[asset.id] ?? [];
+                const rowPct = spotAnchoredSparklineChangePct(line, asset.price, asset.changePct);
+                const assetUp = spotAnchoredSparklineUp(line, asset.price, asset.change);
                 const isSel = h.symbol === selectedSymbol;
-                const flash = flashMap[h.symbol];
+                const flash = flashMap[asset.id];
                 const gain = asset.price - h.acquisitionPrice;
                 const gainPct = h.acquisitionPrice > 0 ? (gain / h.acquisitionPrice) * 100 : 0;
                 const isG = gain >= 0;
@@ -616,7 +699,7 @@ function MarketPageContent() {
                           {isG ? "+" : ""}{gainPct.toFixed(1)}% vs cost
                         </p>
                       </div>
-                      <SparklineChart data={sparklines[h.symbol] ?? []} isUp={assetUp} width={56} height={26} />
+                      <SparklineChart data={sparklines[asset.id] ?? []} isUp={assetUp} width={56} height={26} />
                     </div>
                     <div className="mt-[6px] flex items-center justify-between">
                       <span
@@ -629,7 +712,7 @@ function MarketPageContent() {
                         {formatCurrency(asset.price)}
                       </span>
                       <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
-                        {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+                        {assetUp ? "+" : ""}{rowPct.toFixed(2)}% 7D
                       </span>
                     </div>
                   </button>
@@ -638,14 +721,33 @@ function MarketPageContent() {
             </div>
           )}
 
+          {holdings.length > 0 && (
+            <div
+              className="flex shrink-0 items-center gap-3 px-4 py-3"
+              style={{ background: colors.background }}
+              aria-hidden
+            >
+              <div className="h-px min-w-[12px] flex-1" style={{ background: colors.border }} />
+              <span
+                className="text-[10px] font-bold uppercase tracking-[0.14em] whitespace-nowrap"
+                style={{ color: colors.textMuted }}
+              >
+                Market
+              </span>
+              <div className="h-px min-w-[12px] flex-1" style={{ background: colors.border }} />
+            </div>
+          )}
+
           {visibleAssets.map((asset) => {
-            const assetUp = asset.change >= 0;
+            const line = sparklines[asset.id] ?? [];
+            const rowPct = spotAnchoredSparklineChangePct(line, asset.price, asset.changePct);
+            const assetUp = spotAnchoredSparklineUp(line, asset.price, asset.change);
             const isSel = asset.symbol === selectedSymbol;
-            const flash = flashMap[asset.symbol];
+            const flash = flashMap[asset.id];
 
             return (
               <button
-                key={asset.symbol}
+                key={asset.id}
                 onClick={() => setSelectedSymbol(asset.symbol)}
                 className="w-full border-b text-left transition-colors duration-100 hover:bg-[#0f0f0f]"
                 style={{
@@ -677,7 +779,7 @@ function MarketPageContent() {
                       )}
                     </div>
                   </div>
-                  <SparklineChart data={sparklines[asset.symbol] ?? []} isUp={assetUp} width={56} height={26} />
+                  <SparklineChart data={sparklines[asset.id] ?? []} isUp={assetUp} width={56} height={26} />
                 </div>
                 <div className="mt-[6px] flex items-center justify-between">
                   <span
@@ -690,7 +792,7 @@ function MarketPageContent() {
                     {formatCurrency(asset.price)}
                   </span>
                   <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
-                    {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+                    {assetUp ? "+" : ""}{rowPct.toFixed(2)}% 7D
                   </span>
                 </div>
               </button>
@@ -759,13 +861,26 @@ function MarketPageContent() {
                     {formatCurrency(selected.price)}
                   </p>
                   <div className="mt-[5px] flex items-center sm:justify-end gap-[5px]">
-                    {isUp
-                      ? <TrendingUp size={13} strokeWidth={2.5} style={{ color: colors.green }} />
-                      : <TrendingDown size={13} strokeWidth={2.5} style={{ color: colors.red }} />
-                    }
-                    <span className="tabular-nums text-[13px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
-                      {isUp ? "+" : ""}{formatCurrency(selected.change)} ({isUp ? "+" : ""}{selected.changePct.toFixed(2)}% 7D)
-                    </span>
+                    {rangeWindowMetrics.pending ? (
+                      <span className="text-[13px] font-semibold" style={{ color: colors.textMuted }}>
+                        Loading {rangeWindowMetrics.label}…
+                      </span>
+                    ) : (
+                      <>
+                        {rangeWindowMetrics.up
+                          ? <TrendingUp size={13} strokeWidth={2.5} style={{ color: colors.green }} />
+                          : <TrendingDown size={13} strokeWidth={2.5} style={{ color: colors.red }} />
+                        }
+                        <span
+                          className="tabular-nums text-[13px] font-semibold"
+                          style={{ color: rangeWindowMetrics.up ? colors.green : colors.red }}
+                        >
+                          {rangeWindowMetrics.up ? "+" : ""}
+                          {formatCurrency(rangeWindowMetrics.change)} ({rangeWindowMetrics.up ? "+" : ""}
+                          {rangeWindowMetrics.changePct.toFixed(2)}% {rangeWindowMetrics.label})
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -853,7 +968,7 @@ function MarketPageContent() {
                     })()}
                   </div>
                 ) : (
-                  <PriceChart data={chartData} isUp={chartIsUp} range={range} onRangeChange={setRange} />
+                  <PriceChart data={priceChartDisplayPoints} isUp={chartIsUp} range={range} onRangeChange={setRange} />
                 )}
               </div>
 
