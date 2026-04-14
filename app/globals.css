@@ -138,15 +138,32 @@ body {
 
 /* ─────────────────────────────────────────────
    Focus Rings — keyboard navigation
+   !important needed to override inline style={{ outline:"none" }}
+   border-radius: inherit follows each element's existing shape
 ───────────────────────────────────────────── */
 *:focus {
   outline: none;
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-green);
-  outline-offset: 3px;
-  border-radius: 6px;
+  outline: 2px solid var(--color-green) !important;
+  outline-offset: 3px !important;
+  border-radius: inherit !important;
+}
+
+/* Inputs — zero offset so ring sits right on the border */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-green) !important;
+  outline-offset: 0px !important;
+  border-radius: inherit !important;
+}
+
+/* Skip focus ring for purely decorative / non-interactive uses */
+[tabindex="-1"]:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* ─────────────────────────────────────────────
