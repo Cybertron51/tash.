@@ -28,7 +28,7 @@ export default function LandingPage() {
     const [lastCheckedCode, setLastCheckedCode] = useState("");
 
     // Waitlist state — used for inline feedback after failed referral
-    const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "success" | "error">("idle");
+    const [waitlistState, setWaitlistState] = useState<"idle" | "success">("idle");
     const [waitlistMsg, setWaitlistMsg] = useState("");
     // Track the email that was actually submitted to avoid double-POST
     const [capturedEmail, setCapturedEmail] = useState("");
@@ -88,7 +88,7 @@ export default function LandingPage() {
             } else {
                 setIsReferralValid(false);
                 // Email was already submitted when they hit Continue — just show confirmation
-                if (userEmail && capturedEmail) {
+                if (capturedEmail) {
                     showWaitlistConfirmation(userEmail);
                 } else {
                     setReferralError("Invalid referral code.");
